@@ -62,7 +62,6 @@ const LandingPage: React.FC = () => {
                 <li><span className="font-semibold">Custom Interview Scripts:</span> Upload a job description to generate a hyper-specific mock interview.</li>
                 <li><span className="font-semibold">Voice Tonality Analysis:</span> Deeper analysis of vocal tone to detect sarcasm, enthusiasm, and stress levels.</li>
                 <li><span className="font-semibold">Peer Review Mode:</span> Share your recorded interview with mentors or friends for human feedback.</li>
-                <li><span className="font-semibold">Multi-language Support:</span> Practice interviews in different languages.</li>
                 <li><span className="font-semibold">Historical Progress Tracking:</span> Visualize your improvement over time with detailed charts and graphs.</li>
             </ul>
         </section>

@@ -1,21 +1,27 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+// FIX: Changed to a default import for React to resolve a potential module resolution issue with named imports.
+import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
 // --- Start of ErrorBoundary Component ---
 interface ErrorBoundaryProps {
-  children: ReactNode;
+  // FIX: Changed to `React.ReactNode` to align with the updated React import style.
+  children: React.ReactNode;
 }
 
 interface ErrorBoundaryState {
   hasError: boolean;
 }
 
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // FIX: Removed `public` modifier. It's the default and may confuse some tools.
-  state: ErrorBoundaryState = {
-    hasError: false
-  };
+// FIX: Changed `Component` to `React.Component` to align with the import change and fix the type error.
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // FIX: Replaced state property initializer with a constructor to explicitly handle props and initialize state. This resolves a TypeScript error where 'this.props' was not recognized.
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = {
+      hasError: false
+    };
+  }
 
   // FIX: Removed `public` modifier.
   static getDerivedStateFromError(_: Error): ErrorBoundaryState {
@@ -23,7 +29,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   // FIX: Removed `public` modifier.
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  // FIX: Changed to `React.ErrorInfo` to align with the updated React import style.
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
   }
 

@@ -49,12 +49,6 @@ const AuthPage: React.FC = () => {
           {isLogin ? 'Sign in to continue your journey' : 'Start your journey with Sentio'}
         </p>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {!isLogin && (
-            <div>
-              <label htmlFor="name" className="text-sm font-bold text-gray-400 block mb-2">Full Name</label>
-              <input type="text" id="name" className="w-full p-3 bg-gray-700 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none" placeholder="John Doe" />
-            </div>
-          )}
           <div>
             <label htmlFor="email" className="text-sm font-bold text-gray-400 block mb-2">Email Address</label>
             <input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 bg-gray-700 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none" placeholder="you@example.com" required />

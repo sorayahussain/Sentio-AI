@@ -1,6 +1,14 @@
-export type Page = 'landing' | 'auth' | 'interview' | 'report' | 'history' | 'permissions';
+export type Page = 'landing' | 'auth' | 'interview' | 'report' | 'history' | 'permissions' | 'settings';
 
 export type InterviewType = 'Job' | 'School' | 'Casual';
+
+export type AIVoice = 'Kore' | 'Puck' | 'Charon' | 'Fenrir' | 'Zephyr';
+export type AIPersonality = 'Friendly' | 'Professional' | 'Strict';
+
+export interface InterviewerSettings {
+    voice: AIVoice;
+    personality: AIPersonality;
+}
 
 // Data structure for emotion analysis from face-api.js
 export interface EmotionData {

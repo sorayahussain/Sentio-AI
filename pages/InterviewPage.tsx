@@ -1,8 +1,7 @@
-
-
 import React, { useState, useRef, useContext, useEffect, useCallback } from 'react';
 import useFaceApi from '../hooks/useFaceApi';
 import useSpeechRecognition from '../hooks/useSpeechRecognition';
+import useSettings from '../hooks/useSettings'; // Import the new settings hook
 import { generateQuestion, evaluatePerformance, textToSpeech } from '../services/geminiService';
 import { playAudio, resumeAudioContext } from '../services/audioService';
 import { saveInterviewReport } from '../services/firebaseService';
@@ -35,6 +34,7 @@ const InterviewPage: React.FC = () => {
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
+  const { settings } = useSettings(); // Get settings
 
   const { transcript, startListening, stopListening, clearTranscript } = useSpeechRecognition();
   const { modelsLoaded, emotions, isLoadingModels, getEmotionHistory, modelError } = useFaceApi(videoRef, status === 'listening' && cameraAccess === 'granted');
@@ -96,9 +96,10 @@ const InterviewPage: React.FC = () => {
 
   const askNextQuestion = useCallback(async () => {
     setStatus('thinking');
-    const question = await generateQuestion(interviewType, interviewLog, interviewType === 'Job' ? jobContext : undefined);
+    // Use settings for personality and voice
+    const question = await generateQuestion(interviewType, interviewLog, settings.personality, interviewType === 'Job' ? jobContext : undefined);
     setCurrentQuestion(question);
-    const audioBuffer = await textToSpeech(question);
+    const audioBuffer = await textToSpeech(question, settings.voice);
     setStatus('speaking');
 
     const handlePlaybackEnd = () => {
@@ -113,7 +114,7 @@ const InterviewPage: React.FC = () => {
       // Fallback if TTS fails
       handlePlaybackEnd();
     }
-  }, [interviewType, interviewLog, jobContext, clearTranscript, startListening]);
+  }, [interviewType, interviewLog, jobContext, clearTranscript, startListening, settings]);
 
   const handleStartInterview = () => {
     if(interviewType === 'Job' && !jobContext) {
@@ -201,7 +202,7 @@ const InterviewPage: React.FC = () => {
                 {HISTORY_ICON}
                 <span className="hidden md:inline ml-4">History</span>
              </button>
-             <button className="w-full flex items-center p-2 rounded-lg hover:bg-gray-700/50 text-gray-400">
+             <button onClick={() => navigateTo('settings')} className="w-full flex items-center p-2 rounded-lg hover:bg-gray-700/50 text-gray-400">
                 {SETTINGS_ICON}
                 <span className="hidden md:inline ml-4">Settings</span>
              </button>

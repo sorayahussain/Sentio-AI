@@ -45,6 +45,25 @@ export const getInterviewHistory = async (userId: string): Promise<InterviewResu
         return history;
     } catch (error) {
         console.error("Error fetching interview history: ", error);
-        return [];
+        // Re-throw the error to be handled by the calling component
+        throw error;
+    }
+};
+
+export const clearInterviewHistory = async (userId: string) => {
+    try {
+        const historyCollection = firestore.collection(db, 'users', userId, 'interviews');
+        const snapshot = await firestore.getDocs(historyCollection);
+        
+        if (snapshot.empty) return;
+
+        const batch = firestore.writeBatch(db);
+        snapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        await batch.commit();
+    } catch (error) {
+        console.error("Error clearing interview history:", error);
+        throw error; // Re-throw to be handled by the caller
     }
 };

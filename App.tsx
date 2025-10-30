@@ -4,7 +4,8 @@ import AuthPage from './pages/AuthPage';
 import PermissionsPage from './pages/PermissionsPage';
 import InterviewPage from './pages/InterviewPage';
 import ReportPage from './pages/ReportPage';
-import HistoryPage from './pages/HistoryPage'; // Import HistoryPage
+import HistoryPage from './pages/HistoryPage';
+import SettingsPage from './pages/SettingsPage'; // Import SettingsPage
 import { Page, InterviewType, InterviewResult } from './types';
 import { auth } from './firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
@@ -92,6 +93,8 @@ const App: React.FC = () => {
         return interviewResult ? <ReportPage result={interviewResult} /> : <InterviewPage />;
       case 'history':
         return <HistoryPage />;
+      case 'settings': // Add settings page route
+        return <SettingsPage />;
       case 'auth': // Should not be reached if user is logged in, but as a fallback
         return <PermissionsPage />;
       case 'landing':
