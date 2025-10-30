@@ -1,0 +1,8 @@
+{
+  "name": "Sentio AI Interview Coach",
+  "description": "An intelligent, AI-powered interview preparation platform that helps users practice and improve their interview skills through realistic simulations and comprehensive multi-modal feedback.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
