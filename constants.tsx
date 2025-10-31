@@ -39,3 +39,11 @@ export const MIC_ICON = (
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
     </svg>
 );
+
+export const AI_INTERVIEWER_ICON = (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-full w-full text-purple-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 2a2 2 0 012 2v2H10V4a2 2 0 012-2zM4.75 8A2.25 2.25 0 017 5.75h10A2.25 2.25 0 0119.25 8v8A2.25 2.25 0 0117 18.25H7A2.25 2.25 0 014.75 16V8zM9 12h6" />
+        <circle cx="9" cy="10.5" r="1" className="fill-current" />
+        <circle cx="15" cy="10.5" r="1" className="fill-current" />
+    </svg>
+);

@@ -9,7 +9,7 @@ import { AppContext } from '../App';
 import { InterviewTurn, InterviewResult } from '../types';
 import Button from '../components/Button';
 import Loader from '../components/Loader';
-import { JOB_ICON, SCHOOL_ICON, CHAT_ICON, HISTORY_ICON, SETTINGS_ICON, LOGOUT_ICON, MIC_ICON } from '../constants';
+import { JOB_ICON, SCHOOL_ICON, CHAT_ICON, HISTORY_ICON, SETTINGS_ICON, LOGOUT_ICON, MIC_ICON, AI_INTERVIEWER_ICON } from '../constants';
 
 const EmotionIndicator: React.FC<{ label: string; value: number }> = ({ label, value }) => (
     <div className="flex items-center gap-3">
@@ -302,7 +302,9 @@ const InterviewPage: React.FC = () => {
                 <>
                     <div className="flex-shrink-0 mb-4">
                         <div className="flex items-center gap-4">
-                            <img src="https://picsum.photos/seed/ai/100" alt="AI Interviewer" className="w-16 h-16 rounded-full"/>
+                            <div className="w-16 h-16 rounded-full bg-gray-700/50 border border-gray-600 p-3 flex items-center justify-center">
+                                {AI_INTERVIEWER_ICON}
+                            </div>
                             <div>
                                 <h2 className="text-xl font-bold">AI Interviewer</h2>
                                 <div className="flex items-center gap-2">
