@@ -52,7 +52,11 @@ const useSpeechRecognition = () => {
     recognition.onresult = (event) => {
       let finalTranscript = '';
       let interimTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
+      // FIX: The original loop started from `event.resultIndex`, which caused it to miss
+      // previous final results when reconstructing the transcript. The correct approach
+      // is to iterate over the entire `event.results` list to build the full transcript
+      // on every update, as it contains all recognized parts for the current session.
+      for (let i = 0; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
           finalTranscript += event.results[i][0].transcript;
         } else {
