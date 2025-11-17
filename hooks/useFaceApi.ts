@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { EmotionData } from '../types';
 
 // face-api.js is loaded via a script tag in index.html, so we need to declare the global.
@@ -60,7 +60,7 @@ const useFaceApi = (videoRef: React.RefObject<HTMLVideoElement>, isRunning: bool
   }, [isLoadingModels, modelsLoaded]); // Empty dependency array ensures this runs only once on mount.
 
   // FIX: Moved emotion detection logic and related effects inside the custom hook's scope to resolve "Cannot find name" errors.
-  const detectEmotions = async () => {
+  const detectEmotions = useCallback(async () => {
     if (videoRef.current && !videoRef.current.paused && !videoRef.current.ended && videoRef.current.readyState >= 3) {
       try {
         const detections = await faceapi.detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceExpressions();
@@ -80,7 +80,7 @@ const useFaceApi = (videoRef: React.RefObject<HTMLVideoElement>, isRunning: bool
         console.error("Error during face detection:", error);
       }
     }
-  };
+  }, [videoRef]);
   
   useEffect(() => {
     if (isRunning && modelsLoaded) {
@@ -97,8 +97,7 @@ const useFaceApi = (videoRef: React.RefObject<HTMLVideoElement>, isRunning: bool
         clearInterval(intervalId.current);
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRunning, modelsLoaded]);
+  }, [isRunning, modelsLoaded, detectEmotions]);
 
   const getEmotionHistory = () => {
     return emotionHistoryRef.current;

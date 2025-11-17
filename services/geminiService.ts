@@ -14,18 +14,27 @@ const ai = new GoogleGenAI({ apiKey: API_KEY! });
 const model = "gemini-2.5-pro";
 const ttsModel = "gemini-2.5-flash-preview-tts";
 
-const getSystemInstruction = (interviewType: InterviewType, personality: AIPersonality = 'Professional'): string => {
+const getSystemInstruction = (interviewType: InterviewType, personality: AIPersonality = 'Professional', isFirstQuestion: boolean): string => {
   let baseInstruction: string;
   switch (interviewType) {
     case 'Job':
-      baseInstruction = "You are a senior hiring manager conducting a professional job interview. Ask relevant, role-specific questions. Start with an introductory question.";
+      baseInstruction = "You are a senior hiring manager conducting a professional job interview. Ask relevant, role-specific questions.";
+      if (isFirstQuestion) {
+          baseInstruction += " Start with an introductory question.";
+      }
       break;
     case 'School':
-      baseInstruction = "You are an admissions officer for a prestigious university. You are interviewing a prospective student. Focus on academic achievements, personal growth, and future aspirations. Start with a friendly ice-breaker.";
+      baseInstruction = "You are an admissions officer for a prestigious university. You are interviewing a prospective student. Focus on academic achievements, personal growth, and future aspirations.";
+       if (isFirstQuestion) {
+          baseInstruction += " Start with a friendly ice-breaker.";
+      }
       break;
     case 'Casual':
     default:
-      baseInstruction = "You are a friendly stranger making small talk. Keep the conversation light, engaging, and casual. Ask open-ended questions to get to know the person. Start with a simple greeting.";
+      baseInstruction = "You are a friendly stranger making small talk. Keep the conversation light, engaging, and casual. Ask open-ended questions to get to know the person.";
+      if (isFirstQuestion) {
+          baseInstruction += " Start with a simple greeting.";
+      }
       break;
   }
 
@@ -48,13 +57,13 @@ const getSystemInstruction = (interviewType: InterviewType, personality: AIPerso
 
 export const generateQuestion = async (interviewType: InterviewType, history: InterviewTurn[], personality: AIPersonality, context?: string): Promise<string> => {
   try {
+    const isFirstQuestion = history.length === 0;
     const contextPrompt = context ? `The interview is for this role: "${context}". Tailor your questions accordingly.` : '';
     
     const prompt = `
       ${contextPrompt}
       Based on the interview type "${interviewType}" and the following conversation history, ask the next logical and relevant interview question.
       Do not repeat questions. Keep the questions concise.
-      If the history is empty, ask the first question.
 
       History:
       ${history.map(turn => `Interviewer: ${turn.question}\nCandidate: ${turn.answer}`).join('\n\n')}
@@ -66,7 +75,7 @@ export const generateQuestion = async (interviewType: InterviewType, history: In
         model: model,
         contents: prompt,
         config: {
-            systemInstruction: getSystemInstruction(interviewType, personality),
+            systemInstruction: getSystemInstruction(interviewType, personality, isFirstQuestion),
             temperature: 0.8,
         }
     });
