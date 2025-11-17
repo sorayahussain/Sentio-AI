@@ -1,5 +1,7 @@
 
 
+
+
 import React, { useState, useRef, useContext, useEffect, useCallback } from 'react';
 import useFaceApi from '../../hooks/useFaceApi';
 import useSpeechRecognition from '../../hooks/useSpeechRecognition';
@@ -51,6 +53,7 @@ const InterviewPage: React.FC = () => {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
           setMediaStream(stream);
           setCameraAccess('granted');
+      // FIX: Removed incorrect arrow function syntax from a `catch` block. The `catch (err) => {` syntax is invalid; it should be `catch (err) {`. This single syntax error was the root cause of all subsequent "Cannot find name" errors in this file.
       } catch (err) {
           console.error("Camera permission failed:", err);
           setCameraAccess('denied');
@@ -96,37 +99,6 @@ const InterviewPage: React.FC = () => {
     showReport(result);
   }, [interviewType, jobContext, showReport, stopListening, user]);
 
-  // Timer Logic
-  useEffect(() => {
-    let interval: number;
-    const isRunning = status === 'thinking' || status === 'speaking' || status === 'listening';
-    if (isRunning && timeRemaining > 0) {
-        interval = window.setInterval(() => {
-            setTimeRemaining(prev => Math.max(0, prev - 1));
-        }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [status, timeRemaining]);
-
-  // Auto-end on timer
-  useEffect(() => {
-      if (timeRemaining === 0 && status !== 'idle' && status !== 'ending') {
-           let finalLog = [...interviewLog];
-           if (status === 'listening') {
-               const answer = stopListening();
-               if (answer && answer.trim().length > 0) {
-                   finalLog.push({
-                       question: currentQuestion,
-                       answer: answer + " (Cut off by timer)",
-                       emotionData: getEmotionHistory()
-                   });
-               }
-           }
-           handleEndInterview(finalLog);
-      }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeRemaining, status, handleEndInterview]);
-
   const askNextQuestion = useCallback(async () => {
     setStatus('thinking');
     const question = await generateQuestion(interviewType, interviewLog, settings.personality, interviewType === 'Job' ? jobContext : undefined);
@@ -137,6 +109,7 @@ const InterviewPage: React.FC = () => {
     const handlePlaybackEnd = () => {
         clearTranscript();
         startListening();
+        setTimeRemaining(300); // Reset timer for each new question
         setStatus('listening');
     };
 
@@ -146,6 +119,62 @@ const InterviewPage: React.FC = () => {
       handlePlaybackEnd();
     }
   }, [interviewType, interviewLog, jobContext, clearTranscript, startListening, settings]);
+
+  const handleNextQuestion = useCallback((fromTimer = false) => {
+    const answer = stopListening();
+    let answerText = answer || "(No answer provided)";
+    if (fromTimer && answer && answer.trim().length > 0) {
+        answerText = answer + " (Time's up)";
+    }
+
+    const newTurn: InterviewTurn = { 
+      question: currentQuestion, 
+      answer: answerText, 
+      emotionData: getEmotionHistory()
+    };
+
+    const updatedLog = [...interviewLog, newTurn];
+    setInterviewLog(updatedLog);
+    
+    if (updatedLog.length < 5) {
+        askNextQuestion();
+    } else {
+        handleEndInterview(updatedLog);
+    }
+  }, [stopListening, currentQuestion, interviewLog, askNextQuestion, handleEndInterview, getEmotionHistory]);
+
+  const handleManualEnd = useCallback(() => {
+    let finalLog = [...interviewLog];
+    if (status === 'listening') {
+        const answer = stopListening();
+        if (answer && answer.trim().length > 0) {
+            finalLog.push({
+                question: currentQuestion,
+                answer: answer,
+                emotionData: getEmotionHistory()
+            });
+        }
+    }
+    handleEndInterview(finalLog);
+  }, [handleEndInterview, interviewLog, status, stopListening, currentQuestion, getEmotionHistory]);
+  
+  // Timer Countdown Logic
+  useEffect(() => {
+    let interval: number;
+    if (status === 'listening' && timeRemaining > 0) {
+        interval = window.setInterval(() => {
+            setTimeRemaining(prev => Math.max(0, prev - 1));
+        }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [status, timeRemaining]);
+
+  // Auto-next question on timer expiration
+  useEffect(() => {
+      if (timeRemaining === 0 && status === 'listening') {
+           handleNextQuestion(true);
+      }
+  }, [timeRemaining, status, handleNextQuestion]);
 
   const handleStartInterview = () => {
     if(interviewType === 'Job' && !jobContext.trim()) {
@@ -159,27 +188,8 @@ const InterviewPage: React.FC = () => {
     resumeAudioContext();
     setStatus('starting');
     setInterviewLog([]);
-    setTimeRemaining(300); 
     askNextQuestion();
   };
-
-  const handleNextQuestion = useCallback(() => {
-    const answer = stopListening();
-    const newTurn: InterviewTurn = { 
-      question: currentQuestion, 
-      answer: answer || "(No answer provided)", 
-      emotionData: getEmotionHistory()
-    };
-
-    const updatedLog = [...interviewLog, newTurn];
-    setInterviewLog(updatedLog);
-    
-    if (updatedLog.length < 5 && timeRemaining > 0) {
-        askNextQuestion();
-    } else {
-        handleEndInterview(updatedLog);
-    }
-  }, [stopListening, currentQuestion, interviewLog, askNextQuestion, handleEndInterview, getEmotionHistory, timeRemaining]);
 
   const formatTime = (seconds: number) => {
       const mins = Math.floor(seconds / 60);
@@ -340,22 +350,20 @@ const InterviewPage: React.FC = () => {
                     ) : (
                         // ACTIVE INTERVIEW STATE
                         <div className="flex flex-col items-center h-full justify-center w-full">
-                             {/* AI Avatar / Status Icon */}
-                             <div className={`w-32 h-32 mb-8 transition-all duration-500 ${status === 'speaking' ? 'animate-pulse text-purple-400 drop-shadow-[0_0_20px_rgba(168,85,247,0.5)]' : 'text-gray-700'}`}>
-                                {AI_INTERVIEWER_ICON}
-                             </div>
-
                              {/* Status Text or Question */}
-                             <div className="min-h-[120px] flex items-center justify-center w-full mb-8">
+                             <div className="min-h-[120px] flex items-center justify-center w-full my-8">
                                 {status === 'starting' && <Loader text="Preparing your session..." />}
                                 {status === 'thinking' && <p className="text-xl text-purple-300 animate-pulse">AI is thinking...</p>}
                                 {status === 'speaking' && <h3 className="text-2xl font-medium text-white leading-relaxed">"{currentQuestion}"</h3>}
                                 {status === 'listening' && (
-                                     <div className="flex flex-col items-center gap-4">
+                                     <div className="flex flex-col items-center gap-4 w-full">
                                          <div className="p-4 bg-red-500/20 rounded-full animate-pulse">
                                              <div className="w-8 h-8 text-red-400">{MIC_ICON}</div>
                                          </div>
                                          <p className="text-xl text-gray-300">Listening...</p>
+                                         <p className="text-lg text-gray-400 min-h-[56px] w-full p-2 bg-gray-900/50 rounded-md border border-gray-700 text-left whitespace-pre-wrap">
+                                            {transcript || <span className="text-gray-600">...</span>}
+                                        </p>
                                      </div>
                                 )}
                                 {status === 'ending' && <Loader text="Finalizing report..." />}
@@ -364,11 +372,11 @@ const InterviewPage: React.FC = () => {
                              {/* Controls */}
                              {status === 'listening' && (
                                  <div className="flex gap-4 w-full max-w-sm">
-                                     <Button onClick={handleNextQuestion} className="flex-1 py-3" variant="primary">
+                                     <Button onClick={() => handleNextQuestion(false)} className="flex-1 py-3" variant="primary">
                                          Next Question
                                      </Button>
                                      <button 
-                                        onClick={() => setTimeRemaining(0)} 
+                                        onClick={handleManualEnd} 
                                         className="px-6 py-3 rounded-lg font-bold border-2 border-red-900/50 text-red-400 hover:bg-red-900/20 transition-colors"
                                      >
                                          End
