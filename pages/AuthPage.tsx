@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import Button from '../components/Button';
 import { auth } from '../firebase';
-// FIX: Changed to namespace import to resolve module resolution issues for auth functions.
-import * as authFunctions from 'firebase/auth';
+// FIX: Changed from incorrect namespace import to named imports for Firebase v9 SDK.
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { createUserProfile } from '../services/firebaseService';
 
 const AuthPage: React.FC = () => {
@@ -21,14 +21,16 @@ const AuthPage: React.FC = () => {
 
     try {
       if (isLogin) {
-        await authFunctions.signInWithEmailAndPassword(auth, email, password);
+        // FIX: Call 'signInWithEmailAndPassword' directly without the namespace prefix.
+        await signInWithEmailAndPassword(auth, email, password);
       } else {
         if (!firstName.trim() || !lastName.trim()) {
             setError("Please provide your first and last name.");
             setLoading(false);
             return;
         }
-        const userCredential = await authFunctions.createUserWithEmailAndPassword(auth, email, password);
+        // FIX: Call 'createUserWithEmailAndPassword' directly without the namespace prefix.
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         // After user is created in Auth, create their profile in Firestore
         await createUserProfile(userCredential.user, { firstName, lastName });
       }

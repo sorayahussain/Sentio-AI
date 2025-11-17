@@ -2,8 +2,8 @@ import { db } from '../firebase';
 // FIX: Changed from a namespace import to named imports to resolve "property does not exist" errors.
 import { doc, getDoc, serverTimestamp, setDoc, addDoc, collection, query, orderBy, getDocs, writeBatch } from 'firebase/firestore';
 import { InterviewResult } from '../types';
-// FIX: Use a type-only import for the User type to resolve module resolution errors.
-import type { User } from 'firebase/auth';
+// FIX: Changed to a standard import for the User type to ensure it's resolved correctly.
+import { User } from 'firebase/auth';
 
 export const createUserProfile = async (user: User, additionalData: { firstName: string, lastName: string }) => {
     if (!user) return;

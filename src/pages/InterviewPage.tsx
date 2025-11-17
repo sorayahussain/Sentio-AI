@@ -1,18 +1,18 @@
 
 
 import React, { useState, useRef, useContext, useEffect, useCallback } from 'react';
-import useFaceApi from '../hooks/useFaceApi';
-import useSpeechRecognition from '../hooks/useSpeechRecognition';
-import useSettings from '../hooks/useSettings';
-import { generateQuestion, evaluatePerformance, textToSpeech } from '../services/geminiService';
-import { playAudio, resumeAudioContext } from '../services/audioService';
-import { saveInterviewReport } from '../services/firebaseService';
-import { AppContext } from '../App';
+import useFaceApi from '../../hooks/useFaceApi';
+import useSpeechRecognition from '../../hooks/useSpeechRecognition';
+import useSettings from '../../hooks/useSettings';
+import { generateQuestion, evaluatePerformance, textToSpeech } from '../../services/geminiService';
+import { playAudio, resumeAudioContext } from '../../services/audioService';
+import { saveInterviewReport } from '../../services/firebaseService';
+import { AppContext } from '../../App';
 // FIX: Import AppContextType to use for type assertion on useContext.
-import { InterviewTurn, InterviewResult, InterviewType, AppContextType } from '../types';
-import Button from '../components/Button';
-import Loader from '../components/Loader';
-import { JOB_ICON, SCHOOL_ICON, CHAT_ICON, HISTORY_ICON, SETTINGS_ICON, LOGOUT_ICON, MIC_ICON, AI_INTERVIEWER_ICON } from '../constants';
+import { InterviewTurn, InterviewResult, InterviewType, AppContextType } from '../../types';
+import Button from '../../components/Button';
+import Loader from '../../components/Loader';
+import { JOB_ICON, SCHOOL_ICON, CHAT_ICON, HISTORY_ICON, SETTINGS_ICON, LOGOUT_ICON, MIC_ICON, AI_INTERVIEWER_ICON } from '../../constants';
 
 // Helper component for the progress bars in the analysis panel
 const ExpressionBar: React.FC<{ label: string; value: number; colorClass?: string }> = ({ label, value, colorClass = "bg-purple-500" }) => (
@@ -50,10 +50,6 @@ const InterviewPage: React.FC = () => {
       try {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
           setMediaStream(stream);
-          if (videoRef.current) {
-              videoRef.current.srcObject = stream;
-              videoRef.current.play().catch(err => console.error("Error playing video:", err));
-          }
           setCameraAccess('granted');
       } catch (err) {
           console.error("Camera permission failed:", err);
@@ -69,6 +65,16 @@ const InterviewPage: React.FC = () => {
         }
     };
   }, [mediaStream]);
+
+  // Attach stream to video element when it's available and play it
+  useEffect(() => {
+    if (cameraAccess === 'granted' && mediaStream && videoRef.current) {
+      if (videoRef.current.srcObject !== mediaStream) {
+        videoRef.current.srcObject = mediaStream;
+        videoRef.current.play().catch(e => console.error("Error playing video stream:", e));
+      }
+    }
+  }, [cameraAccess, mediaStream]);
 
   const handleEndInterview = useCallback(async (finalLog: InterviewTurn[]) => {
     setStatus('ending');

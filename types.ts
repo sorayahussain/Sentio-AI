@@ -1,5 +1,5 @@
-// FIX: Add a type-only import for the User type to be used in AppContextType.
-import type { User } from 'firebase/auth';
+// FIX: Changed to a standard import for the User type to ensure it's resolved correctly.
+import { User } from 'firebase/auth';
 
 export type Page = 'landing' | 'auth' | 'interview' | 'report' | 'history' | 'permissions' | 'settings';
 

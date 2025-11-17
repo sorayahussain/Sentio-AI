@@ -4,9 +4,9 @@ import { EmotionData } from '../types';
 // face-api.js is loaded via a script tag in index.html, so we need to declare the global.
 declare const faceapi: any;
 
-// The previous CDN URL for model weights was incorrect, causing 404 errors.
-// This updated URL points to the models hosted on jsDelivr via the official GitHub repository.
-const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+// After repeated CDN failures, switching to a raw file CDN (raw.githack.com) that serves directly 
+// from the face-api.js GitHub repository. This should provide a more stable model source.
+const MODEL_URL = 'https://raw.githack.com/justadudewhohacks/face-api.js/master/weights';
 
 // FIX: Added React import to resolve `React.RefObject` type error.
 const useFaceApi = (videoRef: React.RefObject<HTMLVideoElement>, isRunning: boolean) => {
@@ -57,8 +57,9 @@ const useFaceApi = (videoRef: React.RefObject<HTMLVideoElement>, isRunning: bool
             clearInterval(scriptCheckInterval);
         }
     }
-  }, []); // Empty dependency array ensures this runs only once on mount.
+  }, [isLoadingModels, modelsLoaded]); // Empty dependency array ensures this runs only once on mount.
 
+  // FIX: Moved emotion detection logic and related effects inside the custom hook's scope to resolve "Cannot find name" errors.
   const detectEmotions = async () => {
     if (videoRef.current && !videoRef.current.paused && !videoRef.current.ended && videoRef.current.readyState >= 3) {
       try {

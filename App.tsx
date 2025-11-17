@@ -1,16 +1,18 @@
+
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
 import PermissionsPage from './pages/PermissionsPage';
-import InterviewPage from './pages/InterviewPage';
+import InterviewPage from './src/pages/InterviewPage';
 import ReportPage from './pages/ReportPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage'; // Import SettingsPage
 // FIX: Import AppContextType to break a circular dependency that was causing type inference failures.
 import { Page, InterviewType, InterviewResult, AppContextType } from './types';
 import { auth } from './firebase';
-// FIX: Changed to namespace import to resolve module resolution errors for auth functions and types.
-import * as authFunctions from 'firebase/auth';
+// FIX: Changed from incorrect namespace import to named imports for Firebase v9 SDK.
+import { User, onAuthStateChanged, signOut } from 'firebase/auth';
 import Loader from './components/Loader';
 
 // FIX: Using the imported AppContextType to explicitly type the context.
@@ -28,11 +30,13 @@ const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('landing');
   const [interviewType, setInterviewType] = useState<InterviewType>('Job');
   const [interviewResult, setInterviewResult] = useState<InterviewResult | null>(null);
-  const [user, setUser] = useState<authFunctions.User | null>(null);
+  // FIX: Use the imported 'User' type directly.
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = authFunctions.onAuthStateChanged(auth, (currentUser) => {
+    // FIX: Call 'onAuthStateChanged' directly without the namespace prefix.
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser && (currentPage === 'auth' || currentPage === 'landing')) {
           setCurrentPage('permissions');
@@ -48,7 +52,8 @@ const App: React.FC = () => {
 
   const logout = useCallback(async () => {
     try {
-      await authFunctions.signOut(auth);
+      // FIX: Call 'signOut' directly without the namespace prefix.
+      await signOut(auth);
       setCurrentPage('landing');
     } catch (error) {
       console.error("Error signing out:", error);

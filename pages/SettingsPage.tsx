@@ -5,8 +5,8 @@ import Button from '../components/Button';
 import { AIVoice, AIPersonality } from '../types';
 import { clearInterviewHistory } from '../services/firebaseService';
 import { auth } from '../firebase';
-// FIX: Changed to namespace import to resolve module resolution issues for auth functions.
-import * as authFunctions from 'firebase/auth';
+// FIX: Changed from incorrect namespace import to named imports for Firebase v9 SDK.
+import { sendPasswordResetEmail, deleteUser } from 'firebase/auth';
 
 const SettingsPage: React.FC = () => {
     const { navigateTo, user, logout } = useContext(AppContext);
@@ -24,7 +24,8 @@ const SettingsPage: React.FC = () => {
     const handlePasswordReset = async () => {
         if (user?.email) {
             try {
-                await authFunctions.sendPasswordResetEmail(auth, user.email);
+                // FIX: Call 'sendPasswordResetEmail' directly without the namespace prefix.
+                await sendPasswordResetEmail(auth, user.email);
                 setStatusMessage({type: 'success', text: 'Password reset email sent. Please check your inbox.'});
             } catch (error) {
                 console.error("Error sending password reset email:", error);
@@ -48,7 +49,8 @@ const SettingsPage: React.FC = () => {
         if (user && window.confirm("Are you absolutely sure you want to delete your account and all associated data? This is irreversible.")) {
            try {
                await clearInterviewHistory(user.uid); // Clear data first
-               await authFunctions.deleteUser(user);
+               // FIX: Call 'deleteUser' directly without the namespace prefix.
+               await deleteUser(user);
                // onAuthStateChanged in App.tsx will redirect to auth page
            } catch (error: any) {
                console.error("Error deleting account:", error);
