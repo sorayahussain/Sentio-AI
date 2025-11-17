@@ -1,7 +1,9 @@
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-// FIX: Changed from named import to namespace import to resolve module resolution issues.
-import * as firestore from "firebase/firestore";
+// FIX: Changed to namespace import to resolve module resolution error for initializeApp.
+import * as firebaseApp from "firebase/app";
+// FIX: Changed to namespace import to resolve module resolution error for getAuth.
+import * as firebaseAuth from "firebase/auth";
+// FIX: Changed from namespace import to named import to resolve property 'getFirestore' not existing on the namespace.
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDPshKZFP7neD1yzkxugfRQWVl11Z5iv5Q",
@@ -13,7 +15,7 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-// FIX: Use the namespace to call getFirestore.
-export const db = firestore.getFirestore(app);
+const app = firebaseApp.initializeApp(firebaseConfig);
+export const auth = firebaseAuth.getAuth(app);
+// FIX: Use the named import of getFirestore directly.
+export const db = getFirestore(app);

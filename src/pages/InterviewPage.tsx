@@ -8,7 +8,8 @@ import { generateQuestion, evaluatePerformance, textToSpeech } from '../services
 import { playAudio, resumeAudioContext } from '../services/audioService';
 import { saveInterviewReport } from '../services/firebaseService';
 import { AppContext } from '../App';
-import { InterviewTurn, InterviewResult, InterviewType } from '../types';
+// FIX: Import AppContextType to use for type assertion on useContext.
+import { InterviewTurn, InterviewResult, InterviewType, AppContextType } from '../types';
 import Button from '../components/Button';
 import Loader from '../components/Loader';
 import { JOB_ICON, SCHOOL_ICON, CHAT_ICON, HISTORY_ICON, SETTINGS_ICON, LOGOUT_ICON, MIC_ICON, AI_INTERVIEWER_ICON } from '../constants';
@@ -27,7 +28,9 @@ const ExpressionBar: React.FC<{ label: string; value: number; colorClass?: strin
 );
 
 const InterviewPage: React.FC = () => {
-  const { interviewType, navigateTo, showReport, user, logout } = useContext(AppContext);
+  // FIX: Use a type assertion to resolve a type inference failure caused by a circular module dependency.
+  const { interviewType, navigateTo, showReport, user, logout } = useContext(AppContext) as AppContextType;
+  // Differentiate between just having the camera on (monitoring) vs actually being in an interview active state
   const [status, setStatus] = useState<'idle' | 'starting' | 'listening' | 'thinking' | 'speaking' | 'ending'>('idle');
   const [interviewLog, setInterviewLog] = useState<InterviewTurn[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<string>('');
@@ -40,6 +43,7 @@ const InterviewPage: React.FC = () => {
   const { settings } = useSettings();
 
   const { transcript, startListening, stopListening, clearTranscript } = useSpeechRecognition();
+  // Run FaceAPI whenever camera is granted, so user can see preview before starting
   const { modelsLoaded, emotions, isLoadingModels, getEmotionHistory, modelError } = useFaceApi(videoRef, cameraAccess === 'granted');
 
   const enableCamera = async () => {
@@ -57,6 +61,7 @@ const InterviewPage: React.FC = () => {
       }
   };
 
+  // Cleanup webcam on unmount
   useEffect(() => {
     return () => {
         if (mediaStream) {
@@ -70,6 +75,7 @@ const InterviewPage: React.FC = () => {
     stopListening();
 
     if (finalLog.length === 0) {
+        // If they didn't even answer one question, just reset.
         setStatus('idle');
         return;
     }
@@ -84,6 +90,37 @@ const InterviewPage: React.FC = () => {
     showReport(result);
   }, [interviewType, jobContext, showReport, stopListening, user]);
 
+  // Timer Logic
+  useEffect(() => {
+    let interval: number;
+    const isRunning = status === 'thinking' || status === 'speaking' || status === 'listening';
+    if (isRunning && timeRemaining > 0) {
+        interval = window.setInterval(() => {
+            setTimeRemaining(prev => Math.max(0, prev - 1));
+        }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [status, timeRemaining]);
+
+  // Auto-end on timer
+  useEffect(() => {
+      if (timeRemaining === 0 && status !== 'idle' && status !== 'ending') {
+           let finalLog = [...interviewLog];
+           if (status === 'listening') {
+               const answer = stopListening();
+               if (answer && answer.trim().length > 0) {
+                   finalLog.push({
+                       question: currentQuestion,
+                       answer: answer + " (Cut off by timer)",
+                       emotionData: getEmotionHistory()
+                   });
+               }
+           }
+           handleEndInterview(finalLog);
+      }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeRemaining, status, handleEndInterview]);
+
   const askNextQuestion = useCallback(async () => {
     setStatus('thinking');
     const question = await generateQuestion(interviewType, interviewLog, settings.personality, interviewType === 'Job' ? jobContext : undefined);
@@ -94,7 +131,6 @@ const InterviewPage: React.FC = () => {
     const handlePlaybackEnd = () => {
         clearTranscript();
         startListening();
-        setTimeRemaining(300); // Reset timer for the question
         setStatus('listening');
     };
 
@@ -104,48 +140,6 @@ const InterviewPage: React.FC = () => {
       handlePlaybackEnd();
     }
   }, [interviewType, interviewLog, jobContext, clearTranscript, startListening, settings]);
-
-  const handleNextQuestion = useCallback((fromTimer = false) => {
-    const answer = stopListening();
-    
-    let answerText = answer || "(No answer provided)";
-    if (fromTimer && answer && answer.trim().length > 0) {
-        answerText = answer + " (Time's up)";
-    }
-
-    const newTurn: InterviewTurn = { 
-      question: currentQuestion, 
-      answer: answerText, 
-      emotionData: getEmotionHistory()
-    };
-
-    const updatedLog = [...interviewLog, newTurn];
-    setInterviewLog(updatedLog);
-    
-    if (updatedLog.length < 5) {
-        askNextQuestion();
-    } else {
-        handleEndInterview(updatedLog);
-    }
-  }, [stopListening, currentQuestion, interviewLog, askNextQuestion, handleEndInterview, getEmotionHistory]);
-  
-  // Timer Logic
-  useEffect(() => {
-    let interval: number;
-    if (status === 'listening' && timeRemaining > 0) {
-        interval = window.setInterval(() => {
-            setTimeRemaining(prev => Math.max(0, prev - 1));
-        }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [status, timeRemaining]);
-
-  // Auto-next question on timer
-  useEffect(() => {
-      if (timeRemaining === 0 && status === 'listening') {
-           handleNextQuestion(true);
-      }
-  }, [timeRemaining, status, handleNextQuestion]);
 
   const handleStartInterview = () => {
     if(interviewType === 'Job' && !jobContext.trim()) {
@@ -159,23 +153,27 @@ const InterviewPage: React.FC = () => {
     resumeAudioContext();
     setStatus('starting');
     setInterviewLog([]);
+    setTimeRemaining(300); 
     askNextQuestion();
   };
 
-  const handleManualEnd = useCallback(() => {
-    let finalLog = [...interviewLog];
-    if (status === 'listening') {
-        const answer = stopListening();
-        if (answer && answer.trim().length > 0) {
-            finalLog.push({
-                question: currentQuestion,
-                answer: answer,
-                emotionData: getEmotionHistory()
-            });
-        }
+  const handleNextQuestion = useCallback(() => {
+    const answer = stopListening();
+    const newTurn: InterviewTurn = { 
+      question: currentQuestion, 
+      answer: answer || "(No answer provided)", 
+      emotionData: getEmotionHistory()
+    };
+
+    const updatedLog = [...interviewLog, newTurn];
+    setInterviewLog(updatedLog);
+    
+    if (updatedLog.length < 5 && timeRemaining > 0) {
+        askNextQuestion();
+    } else {
+        handleEndInterview(updatedLog);
     }
-    handleEndInterview(finalLog);
-  }, [handleEndInterview, interviewLog, status, stopListening, currentQuestion, getEmotionHistory]);
+  }, [stopListening, currentQuestion, interviewLog, askNextQuestion, handleEndInterview, getEmotionHistory, timeRemaining]);
 
   const formatTime = (seconds: number) => {
       const mins = Math.floor(seconds / 60);
@@ -193,8 +191,10 @@ const InterviewPage: React.FC = () => {
       </button>
   );
 
+  // Main Render
   return (
     <div className="flex h-screen bg-[#0F111A] text-white font-sans overflow-hidden">
+        {/* New Sidebar matching screenshot */}
         <aside className="w-64 bg-[#151823] flex flex-col border-r border-gray-800/50">
             <div className="p-6">
                 <h1 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-500">
@@ -217,16 +217,22 @@ const InterviewPage: React.FC = () => {
             </div>
         </aside>
 
+        {/* Main Content Area */}
         <main className="flex-1 flex p-6 gap-6 overflow-hidden">
+            
+            {/* LEFT COLUMN: Camera & Analysis */}
             <div className="w-5/12 flex flex-col gap-6">
+                {/* Video Feed Container */}
                 <div className="relative bg-black rounded-2xl overflow-hidden aspect-video flex items-center justify-center border border-gray-800 shadow-2xl">
                     {cameraAccess === 'granted' ? (
                          <>
                             <video ref={videoRef} muted autoPlay playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
+                            {/* Status Indicators Overlay */}
                             <div className="absolute top-4 left-4 px-3 py-1 bg-black/50 backdrop-blur-md rounded-full text-xs font-medium text-white/70 border border-white/10 flex items-center gap-2">
                                 <div className={`w-2 h-2 rounded-full ${status === 'listening' ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
                                 {status === 'listening' ? 'LISTENING' : 'CAMERA ACTIVE'}
                             </div>
+                             {/* Timer if active */}
                             {status !== 'idle' && status !== 'ending' && (
                                 <div className="absolute top-4 right-4 px-3 py-1 bg-black/50 backdrop-blur-md rounded-full text-sm font-mono font-bold border border-purple-500/30 text-purple-300">
                                     {formatTime(timeRemaining)}
@@ -243,6 +249,7 @@ const InterviewPage: React.FC = () => {
                     )}
                 </div>
 
+                {/* Camera Status Panel */}
                 <div className="bg-[#1A1D2B] rounded-xl p-4 flex items-center justify-between border border-gray-800 shadow-lg">
                      <div className="flex items-center gap-3">
                         <div className={`w-3 h-3 rounded-full ${cameraAccess === 'granted' ? 'bg-green-400' : 'bg-gray-600'}`}></div>
@@ -263,6 +270,7 @@ const InterviewPage: React.FC = () => {
                      )}
                 </div>
 
+                {/* Real-time Expression Analysis Panel */}
                 <div className="bg-[#1A1D2B] rounded-xl p-5 border border-gray-800 shadow-lg flex-1">
                     <h3 className="text-white font-bold mb-6">Real-time Expression Analysis</h3>
                     {cameraAccess === 'granted' && modelsLoaded ? (
@@ -271,6 +279,7 @@ const InterviewPage: React.FC = () => {
                             <ExpressionBar label="Happy" value={emotions.happy} colorClass="bg-green-500" />
                             <ExpressionBar label="Sad" value={emotions.sad} colorClass="bg-blue-500" />
                             <ExpressionBar label="Angry" value={emotions.angry} colorClass="bg-red-500" />
+                            {/* Hidden but tracked: Fearful, Disgusted, Surprised */}
                         </div>
                     ) : (
                         <div className="h-full flex items-center justify-center text-gray-500 text-sm">
@@ -280,13 +289,17 @@ const InterviewPage: React.FC = () => {
                 </div>
             </div>
 
+            {/* RIGHT COLUMN: Interaction Area */}
             <div className="w-7/12 bg-[#151823] rounded-3xl border border-gray-800/50 p-8 flex flex-col justify-center items-center relative overflow-hidden">
+                
+                {/* Background decoration */}
                 <div className="absolute top-0 right-0 w-96 h-96 bg-purple-900/10 rounded-full filter blur-3xl -z-0 pointer-events-none"></div>
                 <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-900/10 rounded-full filter blur-3xl -z-0 pointer-events-none"></div>
 
                 <div className="relative z-10 max-w-md w-full text-center">
                     
                     {status === 'idle' ? (
+                        // IDLE STATE: Start Screen
                         <>
                             <h2 className="text-3xl font-bold text-white mb-3">{interviewType} Interview Practice</h2>
                             <p className="text-gray-400 mb-8">
@@ -319,33 +332,37 @@ const InterviewPage: React.FC = () => {
                             </div>
                         </>
                     ) : (
+                        // ACTIVE INTERVIEW STATE
                         <div className="flex flex-col items-center h-full justify-center w-full">
+                             {/* AI Avatar / Status Icon */}
+                             <div className={`w-32 h-32 mb-8 transition-all duration-500 ${status === 'speaking' ? 'animate-pulse text-purple-400 drop-shadow-[0_0_20px_rgba(168,85,247,0.5)]' : 'text-gray-700'}`}>
+                                {AI_INTERVIEWER_ICON}
+                             </div>
+
+                             {/* Status Text or Question */}
                              <div className="min-h-[120px] flex items-center justify-center w-full mb-8">
                                 {status === 'starting' && <Loader text="Preparing your session..." />}
                                 {status === 'thinking' && <p className="text-xl text-purple-300 animate-pulse">AI is thinking...</p>}
                                 {status === 'speaking' && <h3 className="text-2xl font-medium text-white leading-relaxed">"{currentQuestion}"</h3>}
                                 {status === 'listening' && (
-                                     <div className="flex flex-col items-center gap-4 w-full">
+                                     <div className="flex flex-col items-center gap-4">
                                          <div className="p-4 bg-red-500/20 rounded-full animate-pulse">
                                              <div className="w-8 h-8 text-red-400">{MIC_ICON}</div>
                                          </div>
                                          <p className="text-xl text-gray-300">Listening...</p>
-                                         <p className="text-lg text-gray-400 min-h-[56px] w-full p-2 bg-gray-900/50 rounded-md border border-gray-700 text-left whitespace-pre-wrap">
-                                            {transcript || <span className="text-gray-600">...</span>}
-                                        </p>
                                      </div>
                                 )}
                                 {status === 'ending' && <Loader text="Finalizing report..." />}
                              </div>
 
+                             {/* Controls */}
                              {status === 'listening' && (
                                  <div className="flex gap-4 w-full max-w-sm">
-                                     {/* FIX: Wrapped handleNextQuestion in an arrow function to prevent passing the event object as an argument, resolving the type error. */}
-                                     <Button onClick={() => handleNextQuestion()} className="flex-1 py-3" variant="primary">
+                                     <Button onClick={handleNextQuestion} className="flex-1 py-3" variant="primary">
                                          Next Question
                                      </Button>
                                      <button 
-                                        onClick={handleManualEnd} 
+                                        onClick={() => setTimeRemaining(0)} 
                                         className="px-6 py-3 rounded-lg font-bold border-2 border-red-900/50 text-red-400 hover:bg-red-900/20 transition-colors"
                                      >
                                          End
@@ -357,6 +374,7 @@ const InterviewPage: React.FC = () => {
 
                 </div>
             </div>
+
         </main>
     </div>
   );

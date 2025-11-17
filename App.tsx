@@ -6,18 +6,17 @@ import InterviewPage from './pages/InterviewPage';
 import ReportPage from './pages/ReportPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage'; // Import SettingsPage
-import { Page, InterviewType, InterviewResult } from './types';
+// FIX: Import AppContextType to break a circular dependency that was causing type inference failures.
+import { Page, InterviewType, InterviewResult, AppContextType } from './types';
 import { auth } from './firebase';
-import { onAuthStateChanged, User, signOut } from 'firebase/auth';
+// FIX: Changed to namespace import to resolve module resolution errors for auth functions and types.
+import * as authFunctions from 'firebase/auth';
 import Loader from './components/Loader';
 
-export const AppContext = React.createContext<{
-  navigateTo: (page: Page, interviewType?: InterviewType) => void;
-  showReport: (result: InterviewResult) => void;
-  interviewType: InterviewType;
-  user: User | null;
-  logout: () => void;
-}>({
+// FIX: Using the imported AppContextType to explicitly type the context.
+// This resolves the issue where consuming components would infer the context type as '{}'
+// due to a circular dependency between App.tsx and InterviewPage.tsx.
+export const AppContext = React.createContext<AppContextType>({
   navigateTo: () => {},
   showReport: () => {},
   interviewType: 'Job',
@@ -29,11 +28,11 @@ const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('landing');
   const [interviewType, setInterviewType] = useState<InterviewType>('Job');
   const [interviewResult, setInterviewResult] = useState<InterviewResult | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<authFunctions.User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = authFunctions.onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser && (currentPage === 'auth' || currentPage === 'landing')) {
           setCurrentPage('permissions');
@@ -49,7 +48,7 @@ const App: React.FC = () => {
 
   const logout = useCallback(async () => {
     try {
-      await signOut(auth);
+      await authFunctions.signOut(auth);
       setCurrentPage('landing');
     } catch (error) {
       console.error("Error signing out:", error);

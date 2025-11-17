@@ -1,3 +1,6 @@
+// FIX: Add a type-only import for the User type to be used in AppContextType.
+import type { User } from 'firebase/auth';
+
 export type Page = 'landing' | 'auth' | 'interview' | 'report' | 'history' | 'permissions' | 'settings';
 
 export type InterviewType = 'Job' | 'School' | 'Casual';
@@ -44,4 +47,15 @@ export interface InterviewResult {
   log: InterviewTurn[];
   feedback: PerformanceFeedback;
   createdAt?: any; // For Firestore server timestamp
+}
+
+// FIX: Define a dedicated type for the AppContext.
+// This helps break the circular dependency between App.tsx and other components,
+// ensuring the context type is correctly inferred.
+export interface AppContextType {
+  navigateTo: (page: Page, interviewType?: InterviewType) => void;
+  showReport: (result: InterviewResult) => void;
+  interviewType: InterviewType;
+  user: User | null;
+  logout: () => void;
 }

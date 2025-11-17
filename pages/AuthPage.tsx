@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import Button from '../components/Button';
 import { auth } from '../firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, AuthError } from 'firebase/auth';
+// FIX: Changed to namespace import to resolve module resolution issues for auth functions.
+import * as authFunctions from 'firebase/auth';
+import { createUserProfile } from '../services/firebaseService';
 
 const AuthPage: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -17,9 +21,16 @@ const AuthPage: React.FC = () => {
 
     try {
       if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
+        await authFunctions.signInWithEmailAndPassword(auth, email, password);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
+        if (!firstName.trim() || !lastName.trim()) {
+            setError("Please provide your first and last name.");
+            setLoading(false);
+            return;
+        }
+        const userCredential = await authFunctions.createUserWithEmailAndPassword(auth, email, password);
+        // After user is created in Auth, create their profile in Firestore
+        await createUserProfile(userCredential.user, { firstName, lastName });
       }
       // The onAuthStateChanged listener in App.tsx will handle navigation
     } catch (err) {
@@ -49,6 +60,18 @@ const AuthPage: React.FC = () => {
           {isLogin ? 'Sign in to continue your journey' : 'Start your journey with Sentio'}
         </p>
         <form onSubmit={handleSubmit} className="space-y-6">
+          {!isLogin && (
+            <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                    <label htmlFor="firstName" className="text-sm font-bold text-gray-400 block mb-2">First Name</label>
+                    <input type="text" id="firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="w-full p-3 bg-gray-700 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none" placeholder="Jane" required />
+                </div>
+                <div className="flex-1">
+                    <label htmlFor="lastName" className="text-sm font-bold text-gray-400 block mb-2">Last Name</label>
+                    <input type="text" id="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} className="w-full p-3 bg-gray-700 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none" placeholder="Doe" required />
+                </div>
+            </div>
+          )}
           <div>
             <label htmlFor="email" className="text-sm font-bold text-gray-400 block mb-2">Email Address</label>
             <input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 bg-gray-700 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none" placeholder="you@example.com" required />
