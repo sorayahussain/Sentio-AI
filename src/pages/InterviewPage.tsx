@@ -1,7 +1,4 @@
 
-
-
-
 import React, { useState, useRef, useContext, useEffect, useCallback } from 'react';
 import useFaceApi from '../../hooks/useFaceApi';
 import useSpeechRecognition from '../../hooks/useSpeechRecognition';
@@ -14,7 +11,7 @@ import { AppContext } from '../../App';
 import { InterviewTurn, InterviewResult, InterviewType, AppContextType } from '../../types';
 import Button from '../../components/Button';
 import Loader from '../../components/Loader';
-import { JOB_ICON, SCHOOL_ICON, CHAT_ICON, HISTORY_ICON, SETTINGS_ICON, LOGOUT_ICON, MIC_ICON, AI_INTERVIEWER_ICON } from '../../constants';
+import { JOB_ICON, SCHOOL_ICON, CHAT_ICON, HISTORY_ICON, SETTINGS_ICON, LOGOUT_ICON, MIC_ICON, AI_INTERVIEWER_ICON, UPLOAD_ICON, DOCUMENT_ICON, TRASH_ICON } from '../../constants';
 
 // Helper component for the progress bars in the analysis panel
 const ExpressionBar: React.FC<{ label: string; value: number; colorClass?: string }> = ({ label, value, colorClass = "bg-purple-500" }) => (
@@ -36,7 +33,11 @@ const InterviewPage: React.FC = () => {
   const [status, setStatus] = useState<'idle' | 'starting' | 'listening' | 'thinking' | 'speaking' | 'ending'>('idle');
   const [interviewLog, setInterviewLog] = useState<InterviewTurn[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<string>('');
-  const [jobContext, setJobContext] = useState('');
+  const [contextInput, setContextInput] = useState('');
+  const [descriptionInput, setDescriptionInput] = useState('');
+  const [urlInput, setUrlInput] = useState('');
+  const [pdfBase64, setPdfBase64] = useState<string | null>(null);
+  const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [cameraAccess, setCameraAccess] = useState<'idle' | 'granted' | 'denied'>('idle');
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(300); 
@@ -48,12 +49,21 @@ const InterviewPage: React.FC = () => {
   // Run FaceAPI whenever camera is granted, so user can see preview before starting
   const { modelsLoaded, emotions, isLoadingModels, getEmotionHistory, modelError } = useFaceApi(videoRef, cameraAccess === 'granted');
 
+  // Reset inputs when interview type changes
+  useEffect(() => {
+      setContextInput('');
+      setDescriptionInput('');
+      setUrlInput('');
+      setPdfBase64(null);
+      setPdfFileName(null);
+  }, [interviewType]);
+
   const enableCamera = async () => {
       try {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
           setMediaStream(stream);
           setCameraAccess('granted');
-      // FIX: Removed incorrect arrow function syntax from a `catch` block. The `catch (err) => {` syntax is invalid; it should be `catch (err) {`. This single syntax error was the root cause of all subsequent "Cannot find name" errors in this file.
+      // FIX: Removed incorrect arrow function syntax from a `catch` block.
       } catch (err) {
           console.error("Camera permission failed:", err);
           setCameraAccess('denied');
@@ -79,6 +89,40 @@ const InterviewPage: React.FC = () => {
     }
   }, [cameraAccess, mediaStream]);
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+        if (file.type !== 'application/pdf') {
+            alert("Invalid file format. Please upload a PDF file.");
+            return;
+        }
+        // 5MB limit validation
+        if (file.size > 5 * 1024 * 1024) {
+            alert("File is too large. Please upload a PDF smaller than 5MB.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64String = reader.result as string;
+            // Remove data:application/pdf;base64, prefix
+            const base64Data = base64String.split(',')[1];
+            setPdfBase64(base64Data);
+            setPdfFileName(file.name);
+            setDescriptionInput(''); // Optionally clear text description if PDF is uploaded
+        };
+        reader.onerror = () => {
+            alert("Failed to read the file. Please try again or paste the text instead.");
+        };
+        reader.readAsDataURL(file);
+    }
+  };
+
+  const removePdf = () => {
+      setPdfBase64(null);
+      setPdfFileName(null);
+  }
+
   const handleEndInterview = useCallback(async (finalLog: InterviewTurn[]) => {
     setStatus('ending');
     stopListening();
@@ -89,7 +133,13 @@ const InterviewPage: React.FC = () => {
         return;
     }
     
-    const feedback = await evaluatePerformance(interviewType, finalLog, interviewType === 'Job' ? jobContext : undefined);
+    const feedback = await evaluatePerformance(
+        interviewType, 
+        finalLog, 
+        contextInput,
+        descriptionInput,
+        pdfBase64 || undefined
+    );
     const result: InterviewResult = { interviewType, log: finalLog, feedback };
     
     if (user) {
@@ -97,11 +147,19 @@ const InterviewPage: React.FC = () => {
     }
 
     showReport(result);
-  }, [interviewType, jobContext, showReport, stopListening, user]);
+  }, [interviewType, contextInput, descriptionInput, pdfBase64, showReport, stopListening, user]);
 
   const askNextQuestion = useCallback(async () => {
     setStatus('thinking');
-    const question = await generateQuestion(interviewType, interviewLog, settings.personality, interviewType === 'Job' ? jobContext : undefined);
+    const question = await generateQuestion(
+        interviewType, 
+        interviewLog, 
+        settings.personality, 
+        contextInput,
+        descriptionInput,
+        urlInput,
+        pdfBase64 || undefined
+    );
     setCurrentQuestion(question);
     const audioBuffer = await textToSpeech(question, settings.voice);
     setStatus('speaking');
@@ -118,7 +176,7 @@ const InterviewPage: React.FC = () => {
     } else {
       handlePlaybackEnd();
     }
-  }, [interviewType, interviewLog, jobContext, clearTranscript, startListening, settings]);
+  }, [interviewType, interviewLog, settings.personality, contextInput, descriptionInput, urlInput, pdfBase64, clearTranscript, startListening, settings.voice]);
 
   const handleNextQuestion = useCallback((fromTimer = false) => {
     const answer = stopListening();
@@ -176,9 +234,36 @@ const InterviewPage: React.FC = () => {
       }
   }, [timeRemaining, status, handleNextQuestion]);
 
+  const inputConfig = {
+    Job: {
+        contextLabel: "Role & Company",
+        contextPlaceholder: "e.g., Product Manager at TechCorp",
+        descLabel: "Job Description",
+        descPlaceholder: "Paste the full job description here...",
+        urlLabel: "Link to Job Posting (Optional)",
+        urlPlaceholder: "https://linkedin.com/jobs/..."
+    },
+    School: {
+        contextLabel: "Program & University",
+        contextPlaceholder: "e.g., Computer Science at Stanford",
+        descLabel: "Program Description / Personal Statement",
+        descPlaceholder: "Paste program details or your personal statement...",
+        urlLabel: "Link to Program (Optional)",
+        urlPlaceholder: "https://university.edu/..."
+    },
+    Casual: {
+        contextLabel: "Topic / Scenario",
+        contextPlaceholder: "e.g., Discussing favorite movies",
+        descLabel: "Context / Background",
+        descPlaceholder: "Paste any relevant background context here...",
+        urlLabel: "Relevant Link (Optional)",
+        urlPlaceholder: "https://..."
+    }
+  }[interviewType];
+
   const handleStartInterview = () => {
-    if(interviewType === 'Job' && !jobContext.trim()) {
-        alert("Please enter the Role & Company you are interviewing for.");
+    if((interviewType === 'Job' || interviewType === 'School') && !contextInput.trim()) {
+        alert(`Please enter the ${inputConfig.contextLabel}.`);
         return;
     }
     if (cameraAccess !== 'granted' || !modelsLoaded) {
@@ -210,7 +295,7 @@ const InterviewPage: React.FC = () => {
   // Main Render
   return (
     <div className="flex h-screen bg-[#0F111A] text-white font-sans overflow-hidden">
-        {/* New Sidebar matching screenshot */}
+        {/* Sidebar */}
         <aside className="w-64 bg-[#151823] flex flex-col border-r border-gray-800/50">
             <div className="p-6">
                 <h1 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-500">
@@ -295,7 +380,9 @@ const InterviewPage: React.FC = () => {
                             <ExpressionBar label="Happy" value={emotions.happy} colorClass="bg-green-500" />
                             <ExpressionBar label="Sad" value={emotions.sad} colorClass="bg-blue-500" />
                             <ExpressionBar label="Angry" value={emotions.angry} colorClass="bg-red-500" />
-                            {/* Hidden but tracked: Fearful, Disgusted, Surprised */}
+                            <ExpressionBar label="Fearful" value={emotions.fearful} colorClass="bg-yellow-600" />
+                            <ExpressionBar label="Disgusted" value={emotions.disgusted} colorClass="bg-orange-700" />
+                            <ExpressionBar label="Surprised" value={emotions.surprised} colorClass="bg-pink-500" />
                         </div>
                     ) : (
                         <div className="h-full flex items-center justify-center text-gray-500 text-sm">
@@ -318,30 +405,71 @@ const InterviewPage: React.FC = () => {
                         // IDLE STATE: Start Screen
                         <>
                             <h2 className="text-3xl font-bold text-white mb-3">{interviewType} Interview Practice</h2>
-                            <p className="text-gray-400 mb-8">
+                            <p className="text-gray-400 mb-6">
                                 {cameraAccess === 'granted' 
-                                    ? "Camera ready. Fill in the details below and press Start." 
-                                    : "Enable your camera, then press Start to begin your session."}
+                                    ? "Camera ready. Customize your session below." 
+                                    : "Enable your camera, then customize your session."}
                             </p>
                             
-                            <div className="space-y-6">
-                                {interviewType === 'Job' && (
-                                    <div className="text-left">
-                                        <label className="block text-gray-500 text-sm font-bold mb-2 ml-1">Role & Company</label>
-                                        <input 
-                                            type="text"
-                                            value={jobContext}
-                                            onChange={(e) => setJobContext(e.target.value)}
-                                            placeholder="e.g., Software Engineer at Google"
-                                            className="w-full p-4 bg-[#1E2235] rounded-xl border border-gray-700 focus:border-purple-500 focus:outline-none text-white placeholder-gray-500 transition-all"
-                                        />
-                                    </div>
-                                )}
+                            <div className="space-y-4 text-left">
+                                <div>
+                                    <label className="block text-gray-500 text-xs font-bold mb-1 ml-1 uppercase tracking-wide">{inputConfig.contextLabel}</label>
+                                    <input 
+                                        type="text"
+                                        value={contextInput}
+                                        onChange={(e) => setContextInput(e.target.value)}
+                                        placeholder={inputConfig.contextPlaceholder}
+                                        className="w-full p-3 bg-[#1E2235] rounded-xl border border-gray-700 focus:border-purple-500 focus:outline-none text-white placeholder-gray-600 transition-all"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-gray-500 text-xs font-bold mb-1 ml-1 uppercase tracking-wide">{inputConfig.descLabel}</label>
+                                    {/* File Upload or Text Toggle */}
+                                    {!pdfFileName ? (
+                                        <div className="space-y-3">
+                                            <div className="relative group">
+                                                    <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl blur opacity-25 group-hover:opacity-50 transition duration-200"></div>
+                                                    <label className="relative block w-full p-4 bg-[#1E2235] rounded-xl border-2 border-dashed border-gray-700 hover:border-purple-500 cursor-pointer transition-all text-center">
+                                                    <span className="text-gray-400 text-sm font-medium flex items-center justify-center gap-2">
+                                                        {UPLOAD_ICON} Upload PDF
+                                                    </span>
+                                                    <input type="file" accept="application/pdf" onChange={handleFileChange} className="hidden" />
+                                                    </label>
+                                            </div>
+                                            <div className="text-center text-gray-600 text-xs uppercase font-bold tracking-wider">OR PASTE TEXT</div>
+                                            <textarea 
+                                                value={descriptionInput}
+                                                onChange={(e) => setDescriptionInput(e.target.value)}
+                                                placeholder={inputConfig.descPlaceholder}
+                                                rows={3}
+                                                className="w-full p-3 bg-[#1E2235] rounded-xl border border-gray-700 focus:border-purple-500 focus:outline-none text-white placeholder-gray-600 transition-all resize-none"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-between p-3 bg-purple-900/20 border border-purple-500/30 rounded-xl">
+                                                <div className="flex items-center gap-3 overflow-hidden">
+                                                    <div className="text-red-400 flex-shrink-0">{DOCUMENT_ICON}</div>
+                                                    <span className="text-sm font-medium text-purple-200 truncate">{pdfFileName}</span>
+                                                </div>
+                                                <button onClick={removePdf} className="text-gray-400 hover:text-red-400 transition-colors ml-2" title="Remove PDF">{TRASH_ICON}</button>
+                                        </div>
+                                    )}
+                                </div>
+                                    <div>
+                                    <label className="block text-gray-500 text-xs font-bold mb-1 ml-1 uppercase tracking-wide">{inputConfig.urlLabel}</label>
+                                    <input 
+                                        type="url"
+                                        value={urlInput}
+                                        onChange={(e) => setUrlInput(e.target.value)}
+                                        placeholder={inputConfig.urlPlaceholder}
+                                        className="w-full p-3 bg-[#1E2235] rounded-xl border border-gray-700 focus:border-purple-500 focus:outline-none text-white placeholder-gray-600 transition-all"
+                                    />
+                                </div>
                                 
                                 <Button 
                                     onClick={handleStartInterview} 
                                     disabled={cameraAccess !== 'granted' || !modelsLoaded}
-                                    className="w-full py-4 text-lg shadow-purple-900/20"
+                                    className="w-full py-4 text-lg shadow-purple-900/20 mt-4"
                                 >
                                     Start Interview
                                 </Button>

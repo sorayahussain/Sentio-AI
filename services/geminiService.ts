@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { InterviewType, InterviewTurn, PerformanceFeedback, EmotionData, AIVoice, AIPersonality } from '../types';
 import { decode, decodeAudioData } from './audioService';
@@ -5,85 +6,134 @@ import { decode, decodeAudioData } from './audioService';
 const API_KEY = process.env.API_KEY;
 
 if (!API_KEY) {
-  // A check to ensure the API key is available.
-  // In a real app, this might be handled more gracefully.
   console.error("API_KEY environment variable not set.");
 }
 const ai = new GoogleGenAI({ apiKey: API_KEY! });
 
-const model = "gemini-2.5-pro";
+// Latency Optimization: Use Flash for the conversational loop
+const fastModel = "gemini-2.5-flash"; 
+// Quality Optimization: Use Pro for the final detailed report
+const complexModel = "gemini-3-pro-preview";
 const ttsModel = "gemini-2.5-flash-preview-tts";
 
-const getSystemInstruction = (interviewType: InterviewType, personality: AIPersonality = 'Professional', isFirstQuestion: boolean): string => {
-  let baseInstruction: string;
+const getSystemInstruction = (interviewType: InterviewType, personality: AIPersonality = 'Professional'): string => {
+  let roleInstruction = "";
   switch (interviewType) {
     case 'Job':
-      baseInstruction = "You are a senior hiring manager conducting a professional job interview. Ask relevant, role-specific questions.";
-      if (isFirstQuestion) {
-          baseInstruction += " Start with an introductory question.";
-      }
+      roleInstruction = "You are a hiring manager.";
       break;
     case 'School':
-      baseInstruction = "You are an admissions officer for a prestigious university. You are interviewing a prospective student. Focus on academic achievements, personal growth, and future aspirations.";
-       if (isFirstQuestion) {
-          baseInstruction += " Start with a friendly ice-breaker.";
-      }
+      roleInstruction = "You are an admissions officer.";
       break;
     case 'Casual':
-    default:
-      baseInstruction = "You are a friendly stranger making small talk. Keep the conversation light, engaging, and casual. Ask open-ended questions to get to know the person.";
-      if (isFirstQuestion) {
-          baseInstruction += " Start with a simple greeting.";
-      }
+      roleInstruction = "You are a friend. Chat casually.";
       break;
+    default:
+      roleInstruction = "You are an interviewer.";
   }
 
-  let personalityModifier: string;
+  let toneInstruction = "";
   switch (personality) {
     case 'Friendly':
-      personalityModifier = " Your tone should be encouraging, friendly, and warm.";
+      toneInstruction = "Tone: Warm.";
       break;
     case 'Strict':
-      personalityModifier = " Your tone should be formal, direct, and challenging. Push the candidate with follow-up questions if their answers are weak.";
+      toneInstruction = "Tone: Strict. Challenge user.";
       break;
     case 'Professional':
     default:
-      personalityModifier = " Maintain a professional, neutral, and objective tone throughout.";
+      toneInstruction = "Tone: Professional.";
       break;
   }
   
-  return baseInstruction + personalityModifier;
+  // Prompt Engineering: Explicit instruction to be concise to save output tokens and time.
+  return `${roleInstruction} ${toneInstruction} Ask ONE short question. React to emotions.`;
 };
 
-export const generateQuestion = async (interviewType: InterviewType, history: InterviewTurn[], personality: AIPersonality, context?: string): Promise<string> => {
+// Helper for formatting emotions efficiently
+const formatEmotions = (emotionData: EmotionData[] | undefined): string => {
+    if (!emotionData || emotionData.length === 0) return "No data";
+    const avg: {[key: string]: number} = {};
+    emotionData.forEach(snap => {
+        Object.entries(snap).forEach(([k, v]) => avg[k] = (avg[k] || 0) + v);
+    });
+    const dominant = Object.entries(avg)
+        .map(([k, v]) => ({k, v: v / emotionData.length}))
+        .filter(item => item.v > 0.2) // Only show significant emotions
+        .sort((a, b) => b.v - a.v)
+        .map(item => item.k)
+        .join(', ');
+    return dominant || "Neutral";
+};
+
+export const generateQuestion = async (
+    interviewType: InterviewType, 
+    history: InterviewTurn[], 
+    personality: AIPersonality, 
+    context?: string,
+    description?: string,
+    url?: string,
+    pdfBase64?: string
+): Promise<string> => {
   try {
     const isFirstQuestion = history.length === 0;
-    const contextPrompt = context ? `The interview is for this role: "${context}". Tailor your questions accordingly.` : '';
     
-    const prompt = `
-      ${contextPrompt}
-      Based on the interview type "${interviewType}" and the following conversation history, ask the next logical and relevant interview question.
-      Do not repeat questions. Keep the questions concise.
+    // Prompt Engineering: Simplify the input context to reduce input token count
+    let contextSummary = "";
+    if (context) contextSummary += `Role/Topic: ${context}.\n`;
+    if (description) contextSummary += `Info: ${description.substring(0, 1000)}...\n`; 
+    
+    // Optimization: Reduce history lookback to 3 turns to save tokens and latency
+    const recentHistory = history.slice(-3);
 
+    let promptText = `
+      ${contextSummary}
+      ${url ? `Ref: ${url}` : ''}
+      
       History:
-      ${history.map(turn => `Interviewer: ${turn.question}\nCandidate: ${turn.answer}`).join('\n\n')}
-
-      Next Question:
+      ${recentHistory.map(turn => `AI: ${turn.question}\nUser: ${turn.answer}\n(Emotions: ${formatEmotions(turn.emotionData)})`).join('\n')}
+      
+      ${isFirstQuestion ? "Ask an opening question." : "Ask a follow-up. If user is Fearful/Disgusted/Surprised, react appropriately (e.g. reassure or clarify)."}
     `;
+
+    const tools = [];
+    if (url) {
+        tools.push({ googleSearch: {} });
+    }
+
+    const parts: any[] = [];
     
+    // Add PDF if available
+    if (pdfBase64) {
+        parts.push({
+            inlineData: {
+                mimeType: 'application/pdf',
+                data: pdfBase64
+            }
+        });
+    }
+
+    parts.push({ text: promptText });
+
     const response = await ai.models.generateContent({
-        model: model,
-        contents: prompt,
+        model: fastModel, // Switching to Flash for speed
+        contents: { parts: parts },
         config: {
-            systemInstruction: getSystemInstruction(interviewType, personality, isFirstQuestion),
-            temperature: 0.8,
+            systemInstruction: getSystemInstruction(interviewType, personality),
+            temperature: 0.7, 
+            maxOutputTokens: 100, // Reduced token limit for faster generation
+            tools: tools.length > 0 ? tools : undefined,
         }
     });
+
+    if (response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
+        console.log("Grounding Metadata:", response.candidates[0].groundingMetadata.groundingChunks);
+    }
 
     return response.text.trim();
   } catch (error) {
     console.error("Error generating question:", error);
-    return "I'm sorry, I encountered an issue. Let's try that again. Can you tell me about yourself?";
+    return "Tell me more about that.";
   }
 };
 
@@ -91,82 +141,84 @@ export const generateQuestion = async (interviewType: InterviewType, history: In
 const feedbackSchema = {
     type: Type.OBJECT,
     properties: {
-        clarity: { type: Type.NUMBER, description: "Score from 1-10 on the clarity of the candidate's speech." },
-        confidence: { type: Type.NUMBER, description: "Score from 1-10 on the candidate's perceived confidence based on verbal and non-verbal cues." },
-        engagement: { type: Type.NUMBER, description: "Score from 1-10 based on facial expressions and overall engagement." },
-        answerQuality: { type: Type.NUMBER, description: "Score from 1-10 on the quality and relevance of the answers." },
-        strengths: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of key strengths observed during the interview." },
-        areasForImprovement: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of areas where the candidate can improve." },
-        overallFeedback: { type: Type.STRING, description: "A comprehensive summary of the candidate's performance, integrating verbal and non-verbal analysis." }
+        clarity: { type: Type.NUMBER, description: "Score 1-10 clarity." },
+        confidence: { type: Type.NUMBER, description: "Score 1-10 confidence." },
+        engagement: { type: Type.NUMBER, description: "Score 1-10 engagement." },
+        answerQuality: { type: Type.NUMBER, description: "Score 1-10 quality." },
+        strengths: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List strengths." },
+        areasForImprovement: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List improvements." },
+        overallFeedback: { type: Type.STRING, description: "Summary feedback." }
     },
     required: ["clarity", "confidence", "engagement", "answerQuality", "strengths", "areasForImprovement", "overallFeedback"]
 };
 
-
-export const evaluatePerformance = async (interviewType: InterviewType, log: InterviewTurn[], context?: string): Promise<PerformanceFeedback> => {
+export const evaluatePerformance = async (
+    interviewType: InterviewType, 
+    log: InterviewTurn[], 
+    context?: string,
+    description?: string,
+    pdfBase64?: string
+): Promise<PerformanceFeedback> => {
     let systemInstruction: string;
     let evaluationCriteria: string;
 
     switch (interviewType) {
         case 'Job':
-            systemInstruction = "You are an expert career coach and hiring manager evaluating a candidate's performance for a specific job role. Focus on professionalism, clarity, and the use of the STAR method in their answers. Your feedback should be actionable and help the candidate land their next job.";
-            evaluationCriteria = "Evaluate the candidate's answers for clarity, conciseness, and relevance to the questions. Assess whether they effectively used the STAR method (Situation, Task, Action, Result) when answering behavioral questions. Consider their non-verbal cues in the context of a professional interview.";
+            systemInstruction = "You are a career coach. Evaluate job interview performance.";
+            evaluationCriteria = "Assess professionalism, STAR method, and clarity.";
             break;
         case 'School':
-            systemInstruction = "You are a seasoned university admissions officer evaluating a prospective student. Assess their passion, intellectual curiosity, and personal character. The feedback should help them strengthen their application and interview skills for academic settings.";
-            evaluationCriteria = "Evaluate the candidate's ability to articulate their motivations, academic interests, and personal experiences. Assess their enthusiasm and suitability for a rigorous academic environment. Consider their non-verbal cues as an indicator of sincerity and confidence.";
+            systemInstruction = "You are an admissions officer. Evaluate a student interview.";
+            evaluationCriteria = "Assess motivation, intellect, and sincerity.";
             break;
         case 'Casual':
         default:
-            systemInstruction = "You are a communication expert providing feedback on a friendly, casual conversation. Focus on the user's ability to be engaging, listen actively, and build rapport. The feedback should be encouraging and focus on improving social interaction skills.";
-            evaluationCriteria = "Evaluate the user's conversational flow, use of open-ended questions (if any), and general friendliness. The goal is not to be critical, but to offer gentle suggestions for being a more engaging conversationalist. Assess their non-verbal cues for signs of active listening and positive engagement.";
+            systemInstruction = "You are a communication expert. Evaluate casual conversation.";
+            evaluationCriteria = "Assess flow, friendliness, and engagement.";
             break;
     }
 
     try {
-        const contextPrompt = context ? `The candidate was interviewing for this role: "${context}". Evaluate their answers and performance based on suitability for this specific role.` : '';
-
-        const formatEmotions = (emotionData: EmotionData[] | undefined): string => {
-            if (!emotionData || emotionData.length === 0) return "No facial expression data captured.";
-            const avgEmotions: { [key: string]: number } = {};
-            emotionData.forEach(snapshot => {
-                for (const [key, value] of Object.entries(snapshot)) {
-                    avgEmotions[key] = (avgEmotions[key] || 0) + value;
-                }
-            });
-            for (const key in avgEmotions) {
-                avgEmotions[key] /= emotionData.length;
-            }
-            const dominantEmotions = Object.entries(avgEmotions)
-                .filter(([, value]) => value > 0.1)
-                .sort((a, b) => b[1] - a[1])
-                .map(([key, value]) => `${key}: ${(value * 100).toFixed(0)}%`)
-                .join(', ');
-            return `Average emotional expression: ${dominantEmotions || 'Neutral'}.`;
-        };
+        // Prepare a compact transcript for the prompt
+        const transcript = log.map(turn => `
+            Q: ${turn.question}
+            A: ${turn.answer}
+            Emotions: ${formatEmotions(turn.emotionData)}
+        `).join('\n\n');
 
         const prompt = `
-            Analyze the following interview transcript and provide a comprehensive performance evaluation based on the specified criteria.
-            Interview Type: ${interviewType}
-            ${contextPrompt}
-            Evaluation Criteria: ${evaluationCriteria}
+            Evaluate this ${interviewType} interview.
+            Context: ${context || 'General'}
+            ${description ? `Description provided.` : ''}
+            
+            Criteria: ${evaluationCriteria}
 
-            For each turn, I will provide the candidate's answer and a summary of their non-verbal cues derived from facial expression analysis.
-            Use this multi-modal information to provide a holistic analysis. A 'happy' or 'neutral' expression generally indicates confidence and engagement, while excessive 'sad', 'angry', or 'fearful' expressions might suggest nervousness or a lack of confidence.
+            Transcript:
+            ${transcript}
 
-            Transcript with Non-Verbal Analysis:
-            ${log.map(turn => `
-                Interviewer: ${turn.question}
-                Candidate's Answer: ${turn.answer}
-                Candidate's Non-Verbal Cues: ${formatEmotions(turn.emotionData)}
-            `).join('\n---\n')}
-
-            Based on all of this, provide feedback in the required JSON format.
+            Provide feedback in JSON format.
         `;
 
+        const parts: any[] = [];
+        
+        if (pdfBase64) {
+            parts.push({
+                inlineData: {
+                    mimeType: 'application/pdf',
+                    data: pdfBase64
+                }
+            });
+        }
+        // Add text description if no PDF or as supplement, but truncated to avoid token limits if massive
+        if (description && !pdfBase64) {
+             parts.push({ text: `Context Description: ${description}` });
+        }
+        
+        parts.push({ text: prompt });
+
         const response = await ai.models.generateContent({
-            model: model,
-            contents: prompt,
+            model: complexModel, // Keep Pro for high-quality evaluation
+            contents: { parts: parts },
             config: {
                 responseMimeType: 'application/json',
                 responseSchema: feedbackSchema,
@@ -194,7 +246,7 @@ export const textToSpeech = async (text: string, voice: AIVoice = 'Kore'): Promi
     try {
         const response = await ai.models.generateContent({
             model: ttsModel,
-            contents: [{ parts: [{ text: `Say with a clear and professional tone: ${text}` }] }],
+            contents: [{ parts: [{ text: text }] }], 
             config: {
                 responseModalities: [Modality.AUDIO],
                 speechConfig: {
