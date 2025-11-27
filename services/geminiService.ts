@@ -10,23 +10,22 @@ if (!API_KEY) {
 }
 const ai = new GoogleGenAI({ apiKey: API_KEY! });
 
-// Latency Optimization: Use Flash for the conversational loop
-const fastModel = "gemini-2.5-flash"; 
-// Quality Optimization: Use Pro for the final detailed report
-const complexModel = "gemini-3-pro-preview";
+// User requested Gemini 3 Pro for questions
+const questionModel = "gemini-3-pro-preview"; 
+const evaluationModel = "gemini-3-pro-preview";
 const ttsModel = "gemini-2.5-flash-preview-tts";
 
 const getSystemInstruction = (interviewType: InterviewType, personality: AIPersonality = 'Professional'): string => {
   let roleInstruction = "";
   switch (interviewType) {
     case 'Job':
-      roleInstruction = "You are a hiring manager.";
+      roleInstruction = "You are a hiring manager interviewing a candidate for a role.";
       break;
     case 'School':
-      roleInstruction = "You are an admissions officer.";
+      roleInstruction = "You are an admissions officer interviewing a student.";
       break;
     case 'Casual':
-      roleInstruction = "You are a friend. Chat casually.";
+      roleInstruction = "You are a friend having a casual chat.";
       break;
     default:
       roleInstruction = "You are an interviewer.";
@@ -35,19 +34,18 @@ const getSystemInstruction = (interviewType: InterviewType, personality: AIPerso
   let toneInstruction = "";
   switch (personality) {
     case 'Friendly':
-      toneInstruction = "Tone: Warm.";
+      toneInstruction = "Tone: Warm and encouraging.";
       break;
     case 'Strict':
-      toneInstruction = "Tone: Strict. Challenge user.";
+      toneInstruction = "Tone: Strict, formal, and challenging.";
       break;
     case 'Professional':
     default:
-      toneInstruction = "Tone: Professional.";
+      toneInstruction = "Tone: Professional and objective.";
       break;
   }
   
-  // Prompt Engineering: Explicit instruction to be concise to save output tokens and time.
-  return `${roleInstruction} ${toneInstruction} Ask ONE short question. React to emotions.`;
+  return `${roleInstruction} ${toneInstruction} Your goal is to assess the candidate. Be concise.`;
 };
 
 // Helper for formatting emotions efficiently
@@ -76,14 +74,23 @@ export const generateQuestion = async (
     pdfBase64?: string
 ): Promise<string> => {
   try {
-    const isFirstQuestion = history.length === 0;
+    const turnCount = history.length;
     
-    // Prompt Engineering: Simplify the input context to reduce input token count
+    // Prompt Engineering: Staged approach
+    let stageInstruction = "";
+    if (turnCount === 0) {
+        stageInstruction = "Ask a standard, simple opening question like 'Tell me about yourself'. Keep it short (under 15 words). Do not reference specific job details yet.";
+    } else if (turnCount === 1) {
+        stageInstruction = "Ask a simple follow-up question about the user's background or soft skills. Keep it short. Do not dive into technical details yet.";
+    } else {
+        stageInstruction = "Ask a specific, challenging question based on the Target Role and Job Description. Keep the question concise (under 30 words).";
+    }
+
+    // Clarify context
     let contextSummary = "";
-    if (context) contextSummary += `Role/Topic: ${context}.\n`;
-    if (description) contextSummary += `Info: ${description.substring(0, 1000)}...\n`; 
+    if (context) contextSummary += `Target Role (User is applying for this): ${context}.\n`;
+    if (description) contextSummary += `Job/Program Description: ${description.substring(0, 1000)}...\n`; 
     
-    // Optimization: Reduce history lookback to 3 turns to save tokens and latency
     const recentHistory = history.slice(-3);
 
     let promptText = `
@@ -93,7 +100,8 @@ export const generateQuestion = async (
       History:
       ${recentHistory.map(turn => `AI: ${turn.question}\nUser: ${turn.answer}\n(Emotions: ${formatEmotions(turn.emotionData)})`).join('\n')}
       
-      ${isFirstQuestion ? "Ask an opening question." : "Ask a follow-up. If user is Fearful/Disgusted/Surprised, react appropriately (e.g. reassure or clarify)."}
+      Task: ${stageInstruction}
+      Constraint: The question MUST be short and concise. Avoid long preambles.
     `;
 
     const tools = [];
@@ -116,12 +124,12 @@ export const generateQuestion = async (
     parts.push({ text: promptText });
 
     const response = await ai.models.generateContent({
-        model: fastModel, // Switching to Flash for speed
+        model: questionModel, 
         contents: { parts: parts },
         config: {
             systemInstruction: getSystemInstruction(interviewType, personality),
             temperature: 0.7, 
-            maxOutputTokens: 100, // Reduced token limit for faster generation
+            maxOutputTokens: 150, 
             tools: tools.length > 0 ? tools : undefined,
         }
     });
@@ -133,7 +141,7 @@ export const generateQuestion = async (
     return response.text.trim();
   } catch (error) {
     console.error("Error generating question:", error);
-    return "Tell me more about that.";
+    return "Could you tell me more about your background?";
   }
 };
 
@@ -217,7 +225,7 @@ export const evaluatePerformance = async (
         parts.push({ text: prompt });
 
         const response = await ai.models.generateContent({
-            model: complexModel, // Keep Pro for high-quality evaluation
+            model: evaluationModel, 
             contents: { parts: parts },
             config: {
                 responseMimeType: 'application/json',
