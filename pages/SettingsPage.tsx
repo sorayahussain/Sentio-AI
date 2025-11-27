@@ -1,11 +1,12 @@
-
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
 import useSettings from '../hooks/useSettings';
 import Button from '../components/Button';
 import { AIVoice, AIPersonality } from '../types';
-import { clearInterviewHistory } from '../services/firebaseService';
+import { clearInterviewHistory, deleteUserAccount } from '../services/firebaseService';
 import { auth } from '../firebase';
+// FIX: Changed from incorrect namespace import to named imports for Firebase v9 SDK.
+import { sendPasswordResetEmail, deleteUser,reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 
 const SettingsPage: React.FC = () => {
     const { navigateTo, user, logout } = useContext(AppContext);
@@ -23,8 +24,8 @@ const SettingsPage: React.FC = () => {
     const handlePasswordReset = async () => {
         if (user?.email) {
             try {
-                // FIX: Use compat method `auth.sendPasswordResetEmail`.
-                await auth.sendPasswordResetEmail(user.email);
+                // FIX: Call 'sendPasswordResetEmail' directly without the namespace prefix.
+                await sendPasswordResetEmail(auth, user.email);
                 setStatusMessage({type: 'success', text: 'Password reset email sent. Please check your inbox.'});
             } catch (error) {
                 console.error("Error sending password reset email:", error);
@@ -45,20 +46,51 @@ const SettingsPage: React.FC = () => {
     };
 
     const handleDeleteAccount = async () => {
-        if (user && window.confirm("Are you absolutely sure you want to delete your account and all associated data? This is irreversible.")) {
-           try {
-               await clearInterviewHistory(user.uid); // Clear data first
-               // FIX: Use compat method `user.delete()` for account deletion.
-               await user.delete();
-               // onAuthStateChanged in App.tsx will redirect to auth page
-           } catch (error: any) {
-               console.error("Error deleting account:", error);
-               if (error.code === 'auth/requires-recent-login') {
-                    setStatusMessage({ type: 'error', text: 'This is a sensitive operation. Please log out and log back in before deleting your account.' });
-               } else {
-                    setStatusMessage({ type: 'error', text: 'Failed to delete account.' });
-               }
-           }
+        if (!user || !user.email) return;
+
+        // 1. Ask for password confirmation
+        const password = prompt(
+            "For security, please enter your password to confirm account deletion:\n\n" +
+            "This action is irreversible and will permanently delete all your data."
+        );
+
+        if (!password) {
+            setStatusMessage({ type: 'error', text: 'Account deletion cancelled.' });
+            return;
+        }
+
+        if (window.confirm("FINAL WARNING: This will permanently delete your account and all data. This cannot be undone. Are you absolutely sure?")) {
+            try {
+                // 2. Re-authenticate the user
+                const credential = EmailAuthProvider.credential(user.email, password);
+                await reauthenticateWithCredential(user, credential);
+                
+                console.log("User re-authenticated successfully");
+
+                // 3. Delete ALL user data from Firestore first
+                await deleteUserAccount(user.uid);
+                console.log("Firestore data deleted successfully");
+
+                // 4. Then delete the auth account
+                await deleteUser(user);
+                console.log("Auth account deleted successfully");
+
+                // Success
+                setStatusMessage({ type: 'success', text: 'Account deleted successfully. Redirecting...' });
+
+            } catch (error: any) {
+                console.error("Error deleting account:", error);
+                
+                if (error.code === 'auth/wrong-password') {
+                    setStatusMessage({ type: 'error', text: 'Incorrect password. Please try again.' });
+                } else if (error.code === 'auth/requires-recent-login') {
+                    setStatusMessage({ type: 'error', text: 'Session expired. Please log out and log back in, then try again.' });
+                } else if (error.code === 'auth/invalid-credential') {
+                    setStatusMessage({ type: 'error', text: 'Invalid credentials. Please check your password and try again.' });
+                } else {
+                    setStatusMessage({ type: 'error', text: `Failed to delete account: ${error.message}` });
+                }
+            }
         }
     }
 

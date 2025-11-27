@@ -1,6 +1,5 @@
-
-// FIX: Switched to Firebase Compat SDK types.
-import firebase from 'firebase/compat/app';
+// FIX: Changed to a standard import for the User type to ensure it's resolved correctly.
+import { User } from 'firebase/auth';
 
 export type Page = 'landing' | 'auth' | 'interview' | 'report' | 'history' | 'permissions' | 'settings';
 
@@ -57,6 +56,6 @@ export interface AppContextType {
   navigateTo: (page: Page, interviewType?: InterviewType) => void;
   showReport: (result: InterviewResult) => void;
   interviewType: InterviewType;
-  user: firebase.User | null;
+  user: User | null;
   logout: () => void;
 }

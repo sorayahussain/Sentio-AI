@@ -1,32 +1,31 @@
-
 import { db } from '../firebase';
-// FIX: Switched to Firebase Compat SDK imports.
-import firebase from 'firebase/compat/app';
-import 'firebase/compat/firestore';
+// FIX: Changed from a namespace import to named imports to resolve "property does not exist" errors.
+import { doc, getDoc, serverTimestamp, setDoc, addDoc, collection, query, orderBy, getDocs, writeBatch } from 'firebase/firestore';
 import { InterviewResult } from '../types';
+// FIX: Changed to a standard import for the User type to ensure it's resolved correctly.
+import { User } from 'firebase/auth';
 
-// FIX: Use firebase.User from compat SDK.
-export const createUserProfile = async (user: firebase.User, additionalData: { firstName: string, lastName: string }) => {
+export const createUserProfile = async (user: User, additionalData: { firstName: string, lastName: string }) => {
     if (!user) return;
     // Create a reference to the user document with the user's UID as the document ID
-    // FIX: Use compat chaining syntax `db.collection(...).doc(...)`.
-    const userRef = db.collection('users').doc(user.uid);
+    const userRef = doc(db, 'users', user.uid);
     
     // Check if the document already exists to avoid overwriting
-    const snapshot = await userRef.get();
+    const snapshot = await getDoc(userRef);
 
-    if (!snapshot.exists) {
+    if (!snapshot.exists()) {
         const { email } = user;
         const { firstName, lastName } = additionalData;
+        const timestamp = serverTimestamp();
         try {
             // Note: We are NOT storing the password here. Firebase Auth handles that securely.
-            // FIX: Use `firebase.firestore.FieldValue.serverTimestamp()` for compat SDK.
-            await userRef.set({
+            // The structure here matches the screenshot provided, minus the insecure password field.
+            await setDoc(userRef, {
                 firstName,
                 lastName,
                 email,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                createdAt: timestamp,
+                updatedAt: timestamp,
             });
         } catch (error) {
             console.error("Error creating user profile in Firestore: ", error);
@@ -36,10 +35,10 @@ export const createUserProfile = async (user: firebase.User, additionalData: { f
 
 export const saveInterviewReport = async (userId: string, result: InterviewResult) => {
     try {
-        // FIX: Use compat chaining syntax `db.collection(...).add(...)`.
-        await db.collection('users').doc(userId).collection('interviews').add({
+        // FIX: Prefixed firestore functions with the 'firestore' namespace.
+        await addDoc(collection(db, 'users', userId, 'interviews'), {
             ...result,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            createdAt: serverTimestamp()
         });
     } catch (error) {
         console.error("Error saving interview report: ", error);
@@ -66,9 +65,9 @@ export const getInterviewHistory = async (userId: string): Promise<InterviewResu
     //
     // This will ensure that only the authenticated user can access their own interview history.
     try {
-        // FIX: Use compat chaining syntax for query.
-        const q = db.collection('users').doc(userId).collection('interviews').orderBy('createdAt', 'desc');
-        const querySnapshot = await q.get();
+        // FIX: Prefixed firestore functions with the 'firestore' namespace.
+        const q = query(collection(db, 'users', userId, 'interviews'), orderBy('createdAt', 'desc'));
+        const querySnapshot = await getDocs(q);
         const history: InterviewResult[] = [];
         querySnapshot.forEach((doc) => {
             history.push({ id: doc.id, ...doc.data() } as InterviewResult);
@@ -83,14 +82,12 @@ export const getInterviewHistory = async (userId: string): Promise<InterviewResu
 
 export const clearInterviewHistory = async (userId: string) => {
     try {
-        // FIX: Use compat chaining syntax.
-        const historyCollection = db.collection('users').doc(userId).collection('interviews');
-        const snapshot = await historyCollection.get();
+        const historyCollection = collection(db, 'users', userId, 'interviews');
+        const snapshot = await getDocs(historyCollection);
         
         if (snapshot.empty) return;
 
-        // FIX: Use compat `db.batch()` syntax.
-        const batch = db.batch();
+        const batch = writeBatch(db);
         snapshot.docs.forEach(doc => {
             batch.delete(doc.ref);
         });
@@ -98,5 +95,31 @@ export const clearInterviewHistory = async (userId: string) => {
     } catch (error) {
         console.error("Error clearing interview history:", error);
         throw error; // Re-throw to be handled by the caller
+    }
+};
+
+export const deleteUserAccount = async (userId: string) => {
+    try {
+        const batch = writeBatch(db);
+        
+        // 1. Delete all interview history (subcollection)
+        const interviewsRef = collection(db, 'users', userId, 'interviews');
+        const interviewsSnapshot = await getDocs(interviewsRef);
+        interviewsSnapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
+        // 2. Delete the user document itself
+        const userRef = doc(db, 'users', userId);
+        batch.delete(userRef);
+
+        // 3. Commit all deletions
+        await batch.commit();
+        
+        console.log("User data deleted successfully from Firestore");
+        
+    } catch (error) {
+        console.error("Error deleting user account data:", error);
+        throw error;
     }
 };
