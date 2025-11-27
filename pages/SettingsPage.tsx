@@ -46,14 +46,7 @@ const SettingsPage: React.FC = () => {
     };
 
     const handleDeleteAccount = async () => {
-        console.log("1. Delete account button clicked");
-        
-        if (!user || !user.email) {
-            console.log("2. No user or email found");
-            return;
-        }
-
-        console.log("3. User found:", user.email);
+        if (!user || !user.email) return;
 
         // 1. Ask for password confirmation
         const password = prompt(
@@ -61,45 +54,32 @@ const SettingsPage: React.FC = () => {
             "This action is irreversible and will permanently delete all your data."
         );
 
-        console.log("4. Password prompt completed, password provided:", !!password);
-
         if (!password) {
-            console.log("5. User cancelled password prompt");
             setStatusMessage({ type: 'error', text: 'Account deletion cancelled.' });
             return;
         }
 
-        console.log("6. Proceeding with confirmation dialog");
-
         if (window.confirm("FINAL WARNING: This will permanently delete your account and all data. This cannot be undone. Are you absolutely sure?")) {
-            console.log("7. User confirmed final warning");
-            
             try {
-                console.log("8. Starting re-authentication");
                 // 2. Re-authenticate the user
                 const credential = EmailAuthProvider.credential(user.email, password);
                 await reauthenticateWithCredential(user, credential);
                 
-                console.log("9. Re-authentication successful");
+                console.log("User re-authenticated successfully");
 
                 // 3. Delete ALL user data from Firestore first
-                console.log("10. Starting Firestore data deletion");
                 await deleteUserAccount(user.uid);
-                console.log("11. Firestore data deleted successfully");
+                console.log("Firestore data deleted successfully");
 
                 // 4. Then delete the auth account
-                console.log("12. Starting Auth account deletion");
                 await deleteUser(user);
-                console.log("13. Auth account deleted successfully");
+                console.log("Auth account deleted successfully");
 
                 // Success
                 setStatusMessage({ type: 'success', text: 'Account deleted successfully. Redirecting...' });
-                console.log("14. Success message set");
 
             } catch (error: any) {
-                console.error("15. Error in deletion process:", error);
-                console.error("Error code:", error.code);
-                console.error("Error message:", error.message);
+                console.error("Error deleting account:", error);
                 
                 if (error.code === 'auth/wrong-password') {
                     setStatusMessage({ type: 'error', text: 'Incorrect password. Please try again.' });
@@ -111,8 +91,6 @@ const SettingsPage: React.FC = () => {
                     setStatusMessage({ type: 'error', text: `Failed to delete account: ${error.message}` });
                 }
             }
-        } else {
-            console.log("16. User cancelled final confirmation");
         }
     }
 

@@ -32,7 +32,9 @@ interface SpeechRecognition {
 const useSpeechRecognition = () => {
   const [transcript, setTranscript] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const transcriptHistoryRef = useRef('');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -63,7 +65,7 @@ const useSpeechRecognition = () => {
           interimTranscript += event.results[i][0].transcript;
         }
       }
-      setTranscript(finalTranscript + interimTranscript);
+      setTranscript(transcriptHistoryRef.current + finalTranscript + interimTranscript);
     };
 
     recognitionRef.current = recognition;
@@ -75,9 +77,15 @@ const useSpeechRecognition = () => {
 
   const startListening = () => {
     if (recognitionRef.current) {
-      setTranscript('');
-      recognitionRef.current.start();
-      setIsListening(true);
+      // NOTE: We do not clear the transcript here anymore. 
+      // It is the responsibility of the caller to call clearTranscript() when starting a fresh session if needed.
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+        setIsMuted(false);
+      } catch (e) {
+        console.error("Speech recognition already started", e);
+      }
     }
   };
 
@@ -89,11 +97,34 @@ const useSpeechRecognition = () => {
     return transcript;
   };
   
+  const toggleMute = () => {
+      if (isMuted) {
+          // Unmute: Resume listening
+          if (recognitionRef.current) {
+              try {
+                  recognitionRef.current.start();
+                  setIsListening(true);
+                  setIsMuted(false);
+              } catch(e) { console.error(e) }
+          }
+      } else {
+          // Mute: Stop listening but preserve state
+          if (recognitionRef.current) {
+              recognitionRef.current.stop();
+              setIsListening(false);
+              setIsMuted(true);
+              // Save current transcript to history so when we restart (unmute), we start appending
+              transcriptHistoryRef.current = transcript + ' ';
+          }
+      }
+  };
+  
   const clearTranscript = () => {
       setTranscript('');
+      transcriptHistoryRef.current = '';
   }
 
-  return { transcript, isListening, startListening, stopListening, clearTranscript };
+  return { transcript, isListening, startListening, stopListening, clearTranscript, isMuted, toggleMute };
 };
 
 export default useSpeechRecognition;

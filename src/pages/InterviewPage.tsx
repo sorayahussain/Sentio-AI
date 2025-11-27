@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useContext, useEffect, useCallback } from 'react';
 import useFaceApi from '../../hooks/useFaceApi';
 import useSpeechRecognition from '../../hooks/useSpeechRecognition';
@@ -11,7 +12,7 @@ import { AppContext } from '../../App';
 import { InterviewTurn, InterviewResult, InterviewType, AppContextType } from '../../types';
 import Button from '../../components/Button';
 import Loader from '../../components/Loader';
-import { JOB_ICON, SCHOOL_ICON, CHAT_ICON, HISTORY_ICON, SETTINGS_ICON, LOGOUT_ICON, MIC_ICON, AI_INTERVIEWER_ICON, UPLOAD_ICON, DOCUMENT_ICON, TRASH_ICON } from '../../constants';
+import { JOB_ICON, SCHOOL_ICON, CHAT_ICON, HISTORY_ICON, SETTINGS_ICON, LOGOUT_ICON, MIC_ICON, MIC_OFF_ICON, AI_INTERVIEWER_ICON, UPLOAD_ICON, DOCUMENT_ICON, TRASH_ICON } from '../../constants';
 
 // Helper component for the progress bars in the analysis panel
 const ExpressionBar: React.FC<{ label: string; value: number; colorClass?: string }> = ({ label, value, colorClass = "bg-purple-500" }) => (
@@ -45,7 +46,7 @@ const InterviewPage: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const { settings } = useSettings();
 
-  const { transcript, startListening, stopListening, clearTranscript } = useSpeechRecognition();
+  const { transcript, startListening, stopListening, clearTranscript, isMuted, toggleMute } = useSpeechRecognition();
   // Run FaceAPI whenever camera is granted, so user can see preview before starting
   const { modelsLoaded, emotions, isLoadingModels, getEmotionHistory, modelError } = useFaceApi(videoRef, cameraAccess === 'granted');
 
@@ -219,13 +220,13 @@ const InterviewPage: React.FC = () => {
   // Timer Countdown Logic
   useEffect(() => {
     let interval: number;
-    if (status === 'listening' && timeRemaining > 0) {
+    if (status === 'listening' && timeRemaining > 0 && !isMuted) {
         interval = window.setInterval(() => {
             setTimeRemaining(prev => Math.max(0, prev - 1));
         }, 1000);
     }
     return () => clearInterval(interval);
-  }, [status, timeRemaining]);
+  }, [status, timeRemaining, isMuted]);
 
   // Auto-next question on timer expiration
   useEffect(() => {
@@ -330,8 +331,8 @@ const InterviewPage: React.FC = () => {
                             <video ref={videoRef} muted autoPlay playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
                             {/* Status Indicators Overlay */}
                             <div className="absolute top-4 left-4 px-3 py-1 bg-black/50 backdrop-blur-md rounded-full text-xs font-medium text-white/70 border border-white/10 flex items-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${status === 'listening' ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
-                                {status === 'listening' ? 'LISTENING' : 'CAMERA ACTIVE'}
+                                <div className={`w-2 h-2 rounded-full ${status === 'listening' && !isMuted ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
+                                {status === 'listening' ? (isMuted ? 'MUTED' : 'LISTENING') : 'CAMERA ACTIVE'}
                             </div>
                              {/* Timer if active */}
                             {status !== 'idle' && status !== 'ending' && (
@@ -485,10 +486,16 @@ const InterviewPage: React.FC = () => {
                                 {status === 'speaking' && <h3 className="text-2xl font-medium text-white leading-relaxed">"{currentQuestion}"</h3>}
                                 {status === 'listening' && (
                                      <div className="flex flex-col items-center gap-4 w-full">
-                                         <div className="p-4 bg-red-500/20 rounded-full animate-pulse">
-                                             <div className="w-8 h-8 text-red-400">{MIC_ICON}</div>
+                                         <div className="relative">
+                                             <div className={`p-4 rounded-full ${isMuted ? 'bg-gray-700' : 'bg-red-500/20 animate-pulse'}`}>
+                                                 <div className={`w-8 h-8 ${isMuted ? 'text-gray-400' : 'text-red-400'}`}>
+                                                     {isMuted ? MIC_OFF_ICON : MIC_ICON}
+                                                 </div>
+                                             </div>
                                          </div>
-                                         <p className="text-xl text-gray-300">Listening...</p>
+
+                                         <p className="text-xl text-gray-300">{isMuted ? "Microphone Muted" : "Listening..."}</p>
+                                         
                                          <p className="text-lg text-gray-400 min-h-[56px] w-full p-2 bg-gray-900/50 rounded-md border border-gray-700 text-left whitespace-pre-wrap">
                                             {transcript || <span className="text-gray-600">...</span>}
                                         </p>
@@ -499,13 +506,27 @@ const InterviewPage: React.FC = () => {
 
                              {/* Controls */}
                              {status === 'listening' && (
-                                 <div className="flex gap-4 w-full max-w-sm">
+                                 <div className="flex gap-3 w-full max-w-md items-center">
+                                     <button
+                                        onClick={toggleMute}
+                                        className={`p-3 rounded-lg font-bold border-2 transition-colors ${
+                                            isMuted 
+                                            ? 'bg-red-600/20 border-red-500 text-red-400 hover:bg-red-600/30' 
+                                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                                        }`}
+                                        title={isMuted ? "Unmute" : "Mute"}
+                                     >
+                                        <div className="w-6 h-6">
+                                            {isMuted ? MIC_OFF_ICON : MIC_ICON}
+                                        </div>
+                                     </button>
+
                                      <Button onClick={() => handleNextQuestion(false)} className="flex-1 py-3" variant="primary">
                                          Next Question
                                      </Button>
                                      <button 
                                         onClick={handleManualEnd} 
-                                        className="px-6 py-3 rounded-lg font-bold border-2 border-red-900/50 text-red-400 hover:bg-red-900/20 transition-colors"
+                                        className="px-4 py-3 rounded-lg font-bold border-2 border-red-900/50 text-red-400 hover:bg-red-900/20 transition-colors"
                                      >
                                          End
                                      </button>
