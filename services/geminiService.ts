@@ -122,7 +122,6 @@ export const generateQuestion = async (
             systemInstruction: getSystemInstruction(interviewType, personality),
             temperature: 0.7, 
             maxOutputTokens: 100, // Reduced token limit for faster generation
-            thinkingConfig: { thinkingBudget: 0 }, // Disable thinking when maxOutputTokens is constrained
             tools: tools.length > 0 ? tools : undefined,
         }
     });

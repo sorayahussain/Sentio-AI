@@ -1,16 +1,19 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { AppContext } from '../App';
 import { getInterviewHistory } from '../services/firebaseService';
 import { InterviewResult } from '../types';
 import Loader from '../components/Loader';
 import Button from '../components/Button';
-import { JOB_ICON, SCHOOL_ICON, CHAT_ICON } from '../constants';
+import { JOB_ICON, SCHOOL_ICON, CHAT_ICON, DOWNLOAD_ICON } from '../constants';
 
 const HistoryPage: React.FC = () => {
     const [history, setHistory] = useState<InterviewResult[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const { user, showReport, navigateTo } = useContext(AppContext);
+    
+    const historyRef = useRef<HTMLDivElement>(null);
+    const [isExporting, setIsExporting] = useState(false);
 
     useEffect(() => {
         const fetchHistory = async () => {
@@ -48,6 +51,46 @@ const HistoryPage: React.FC = () => {
         const { clarity, confidence, engagement, answerQuality } = feedback;
         return ((clarity + confidence + engagement + answerQuality) / 4).toFixed(1);
     }
+    
+    const handleDownloadHistory = async () => {
+        if (!historyRef.current) return;
+        setIsExporting(true);
+        try {
+            const html2canvas = (window as any).html2canvas;
+            const jspdf = (window as any).jspdf;
+
+            if (!html2canvas || !jspdf) {
+                alert("Export tools not loaded yet.");
+                return;
+            }
+
+            const canvas = await html2canvas(historyRef.current, {
+                scale: 1, // Standard resolution is fine for list
+                useCORS: true,
+                backgroundColor: '#111827' // Force dark background
+            });
+
+            const imgData = canvas.toDataURL('image/png');
+            const { jsPDF } = jspdf;
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4',
+            });
+
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`Sentio_Interview_History_${new Date().toLocaleDateString()}.pdf`);
+        } catch (e) {
+            console.error("Export failed", e);
+            alert("Failed to export history.");
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     if (loading) {
         return <div className="flex items-center justify-center min-h-screen"><Loader text="Loading History..." /></div>;
@@ -55,8 +98,8 @@ const HistoryPage: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-gray-900 to-purple-900/30 p-4 sm:p-6 md:p-8">
-            <div className="max-w-4xl mx-auto">
-                <div className="text-center mb-8">
+            <div className="max-w-4xl mx-auto" ref={historyRef}>
+                <div className="text-center mb-8 flex flex-col items-center">
                     <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">
                         Interview History
                     </h1>
@@ -92,16 +135,22 @@ const HistoryPage: React.FC = () => {
                                 </div>
                                 <div className="text-right">
                                      <p className="text-gray-400 text-sm">Overall Score</p>
-                                     <p className="text-2xl font-bold text-purple-400">{calculateOverallScore(item.feedback)}</p>
+                                     <p className="text-2xl font-bold text-purple-400">{calculateOverallScore(item.feedback)}/10</p>
                                 </div>
-                            </div>
+                             </div>
                         ))}
                     </div>
                 )}
-                 <div className="text-center mt-8">
-                    <Button onClick={() => navigateTo('interview')} variant="secondary">Back to Interview</Button>
-                </div>
             </div>
+            {history.length > 0 && (
+                <div className="text-center mt-8">
+                     <Button onClick={handleDownloadHistory} disabled={isExporting} variant="secondary">
+                        <div className="flex items-center gap-2">
+                             {DOWNLOAD_ICON} {isExporting ? 'Exporting...' : 'Download History PDF'}
+                        </div>
+                    </Button>
+                </div>
+            )}
         </div>
     );
 };

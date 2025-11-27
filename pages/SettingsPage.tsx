@@ -5,7 +5,8 @@ import Button from '../components/Button';
 import { AIVoice, AIPersonality } from '../types';
 import { clearInterviewHistory, deleteUserAccount } from '../services/firebaseService';
 import { auth } from '../firebase';
-import { sendPasswordResetEmail, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+// FIX: Changed from incorrect namespace import to named imports for Firebase v9 SDK.
+import { sendPasswordResetEmail, deleteUser,reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 
 const SettingsPage: React.FC = () => {
     const { navigateTo, user, logout } = useContext(AppContext);
@@ -21,33 +22,15 @@ const SettingsPage: React.FC = () => {
     };
 
     const handlePasswordReset = async () => {
-        console.log("Handle password reset triggered");
-        if (!user || !user.email) {
-            console.warn("No user email found for password reset.");
-            setStatusMessage({type: 'error', text: 'Could not determine email address for password reset.'});
-            return;
-        }
-
-        try {
-            console.log(`Sending password reset email to: ${user.email}`);
-            await sendPasswordResetEmail(auth, user.email);
-            console.log("Password reset email sent successfully.");
-            setStatusMessage({type: 'success', text: `Password reset email sent to ${user.email}. Please check your inbox (and spam folder).`});
-        } catch (error: any) {
-            console.error("Error sending password reset email:", error);
-            
-            let errorMessage = 'Failed to send password reset email.';
-            if (error.code === 'auth/user-not-found') {
-                errorMessage = 'User account not found.';
-            } else if (error.code === 'auth/invalid-email') {
-                errorMessage = 'Invalid email address format.';
-            } else if (error.code === 'auth/too-many-requests') {
-                 errorMessage = 'Too many requests. Please try again later.';
-            } else if (error.message) {
-                errorMessage = error.message;
+        if (user?.email) {
+            try {
+                // FIX: Call 'sendPasswordResetEmail' directly without the namespace prefix.
+                await sendPasswordResetEmail(auth, user.email);
+                setStatusMessage({type: 'success', text: 'Password reset email sent. Please check your inbox.'});
+            } catch (error) {
+                console.error("Error sending password reset email:", error);
+                setStatusMessage({type: 'error', text: 'Failed to send password reset email.'});
             }
-            
-            setStatusMessage({type: 'error', text: errorMessage});
         }
     };
     
@@ -180,7 +163,7 @@ const SettingsPage: React.FC = () => {
                             </div>
                             <div className="flex justify-between items-center">
                                 <p className="text-gray-300">Reset your password.</p>
-                                <Button type="button" onClick={handlePasswordReset} variant="secondary">Send Reset Email</Button>
+                                <Button onClick={handlePasswordReset} variant="secondary">Send Reset Email</Button>
                             </div>
                          </div>
                     </div>

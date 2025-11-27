@@ -1,10 +1,10 @@
 
-
-import React, { useContext } from 'react';
+import React, { useContext, useRef, useState } from 'react';
 import { AppContext } from '../App';
 import { InterviewResult, EmotionData } from '../types';
 import Button from '../components/Button';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Sector } from 'recharts';
+import { DOWNLOAD_ICON, HISTORY_ICON } from '../constants';
 
 interface ReportPageProps {
   result: InterviewResult;
@@ -23,6 +23,8 @@ const ScoreCard: React.FC<{ title: string; score: number }> = ({ title, score })
 const ReportPage: React.FC<ReportPageProps> = ({ result }) => {
   const { navigateTo } = useContext(AppContext);
   const { feedback, interviewType, log } = result;
+  const reportRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const scoreData = [
     { name: 'Clarity', score: feedback.clarity },
@@ -40,9 +42,52 @@ const ReportPage: React.FC<ReportPageProps> = ({ result }) => {
 
   const PIE_COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088fe', '#00c49f', '#ffbb28'];
   
+  const handleDownloadPDF = async () => {
+    if (!reportRef.current) return;
+    setIsExporting(true);
+    try {
+        // Access libraries from window since they are loaded via CDN
+        const html2canvas = (window as any).html2canvas;
+        const jspdf = (window as any).jspdf;
+
+        if (!html2canvas || !jspdf) {
+            console.error("Libraries not loaded");
+            alert("Export libraries are not loaded yet. Please try again.");
+            return;
+        }
+
+        const canvas = await html2canvas(reportRef.current, {
+            scale: 2, // Improve resolution
+            useCORS: true,
+            logging: false,
+        });
+
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = jspdf;
+        const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4',
+        });
+
+        const imgProps = pdf.getImageProperties(imgData);
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.save(`Interview_Report_${interviewType}_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`);
+
+    } catch (error) {
+        console.error("Error generating PDF:", error);
+        alert("Failed to generate PDF report.");
+    } finally {
+        setIsExporting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-purple-900/30 p-4 sm:p-6 md:p-8">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto" ref={reportRef}>
         <div className="text-center mb-8">
           <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">
             Interview Performance Report
@@ -143,11 +188,20 @@ const ReportPage: React.FC<ReportPageProps> = ({ result }) => {
             )}
           </div>
         </div>
-
-        <div className="text-center mt-8">
-            <Button onClick={() => navigateTo('interview', 'Job')}>Practice Again</Button>
-        </div>
       </div>
+        <div className="text-center mt-8 flex justify-center gap-4 flex-wrap">
+            <Button onClick={() => navigateTo('interview', 'Job')}>Practice Again</Button>
+            <Button onClick={() => navigateTo('history')} variant="secondary">
+                <div className="flex items-center gap-2">
+                    {HISTORY_ICON} Interview History
+                </div>
+            </Button>
+            <Button onClick={handleDownloadPDF} variant="secondary" disabled={isExporting}>
+                <div className="flex items-center gap-2">
+                    {DOWNLOAD_ICON} {isExporting ? 'Generating PDF...' : 'Download Report'}
+                </div>
+            </Button>
+        </div>
     </div>
   );
 };
