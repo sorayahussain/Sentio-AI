@@ -1,5 +1,4 @@
 
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
@@ -11,8 +10,8 @@ import SettingsPage from './pages/SettingsPage'; // Import SettingsPage
 // FIX: Import AppContextType to break a circular dependency that was causing type inference failures.
 import { Page, InterviewType, InterviewResult, AppContextType } from './types';
 import { auth } from './firebase';
-// FIX: Changed from incorrect namespace import to named imports for Firebase v9 SDK.
-import { User, onAuthStateChanged, signOut } from 'firebase/auth';
+// FIX: Switched to Firebase Compat imports to match the rest of the app.
+import firebase from 'firebase/compat/app';
 import Loader from './components/Loader';
 
 // FIX: Using the imported AppContextType to explicitly type the context.
@@ -30,13 +29,13 @@ const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('landing');
   const [interviewType, setInterviewType] = useState<InterviewType>('Job');
   const [interviewResult, setInterviewResult] = useState<InterviewResult | null>(null);
-  // FIX: Use the imported 'User' type directly.
-  const [user, setUser] = useState<User | null>(null);
+  // FIX: Use firebase.User from compat SDK.
+  const [user, setUser] = useState<firebase.User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // FIX: Call 'onAuthStateChanged' directly without the namespace prefix.
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    // FIX: Use compat method `auth.onAuthStateChanged`.
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
       setUser(currentUser);
       if (currentUser && (currentPage === 'auth' || currentPage === 'landing')) {
           setCurrentPage('permissions');
@@ -52,8 +51,8 @@ const App: React.FC = () => {
 
   const logout = useCallback(async () => {
     try {
-      // FIX: Call 'signOut' directly without the namespace prefix.
-      await signOut(auth);
+      // FIX: Use compat method `auth.signOut()`.
+      await auth.signOut();
       setCurrentPage('landing');
     } catch (error) {
       console.error("Error signing out:", error);

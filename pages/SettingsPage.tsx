@@ -1,3 +1,4 @@
+
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
 import useSettings from '../hooks/useSettings';
@@ -5,8 +6,6 @@ import Button from '../components/Button';
 import { AIVoice, AIPersonality } from '../types';
 import { clearInterviewHistory } from '../services/firebaseService';
 import { auth } from '../firebase';
-// FIX: Changed from incorrect namespace import to named imports for Firebase v9 SDK.
-import { sendPasswordResetEmail, deleteUser } from 'firebase/auth';
 
 const SettingsPage: React.FC = () => {
     const { navigateTo, user, logout } = useContext(AppContext);
@@ -24,8 +23,8 @@ const SettingsPage: React.FC = () => {
     const handlePasswordReset = async () => {
         if (user?.email) {
             try {
-                // FIX: Call 'sendPasswordResetEmail' directly without the namespace prefix.
-                await sendPasswordResetEmail(auth, user.email);
+                // FIX: Use compat method `auth.sendPasswordResetEmail`.
+                await auth.sendPasswordResetEmail(user.email);
                 setStatusMessage({type: 'success', text: 'Password reset email sent. Please check your inbox.'});
             } catch (error) {
                 console.error("Error sending password reset email:", error);
@@ -49,8 +48,8 @@ const SettingsPage: React.FC = () => {
         if (user && window.confirm("Are you absolutely sure you want to delete your account and all associated data? This is irreversible.")) {
            try {
                await clearInterviewHistory(user.uid); // Clear data first
-               // FIX: Call 'deleteUser' directly without the namespace prefix.
-               await deleteUser(user);
+               // FIX: Use compat method `user.delete()` for account deletion.
+               await user.delete();
                // onAuthStateChanged in App.tsx will redirect to auth page
            } catch (error: any) {
                console.error("Error deleting account:", error);

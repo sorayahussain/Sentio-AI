@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useContext } from 'react';
 import { AppContext } from '../App';
 import { getInterviewHistory } from '../services/firebaseService';
 import { InterviewResult } from '../types';
 import Loader from '../components/Loader';
 import Button from '../components/Button';
-import { JOB_ICON, SCHOOL_ICON, CHAT_ICON } from '../constants';
+import { JOB_ICON, SCHOOL_ICON, CHAT_ICON, DOWNLOAD_ICON } from '../constants';
 
 const HistoryPage: React.FC = () => {
     const [history, setHistory] = useState<InterviewResult[]>([]);
@@ -47,7 +48,35 @@ const HistoryPage: React.FC = () => {
     const calculateOverallScore = (feedback: InterviewResult['feedback']) => {
         const { clarity, confidence, engagement, answerQuality } = feedback;
         return ((clarity + confidence + engagement + answerQuality) / 4).toFixed(1);
-    }
+    };
+
+    const exportHistoryCSV = () => {
+        if (history.length === 0) return;
+        
+        const headers = ["Date", "Type", "Overall Score", "Clarity", "Confidence", "Engagement", "Answer Quality"];
+        const rows = history.map(h => {
+            const date = h.createdAt?.toDate ? new Date(h.createdAt.toDate()).toLocaleDateString() : 'N/A';
+            const score = calculateOverallScore(h.feedback);
+            return [
+                date,
+                h.interviewType,
+                score,
+                h.feedback.clarity,
+                h.feedback.confidence,
+                h.feedback.engagement,
+                h.feedback.answerQuality
+            ].join(",");
+        });
+
+        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `sentio_history_export_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    };
 
     if (loading) {
         return <div className="flex items-center justify-center min-h-screen"><Loader text="Loading History..." /></div>;
@@ -56,11 +85,22 @@ const HistoryPage: React.FC = () => {
     return (
         <div className="min-h-screen bg-gradient-to-b from-gray-900 to-purple-900/30 p-4 sm:p-6 md:p-8">
             <div className="max-w-4xl mx-auto">
-                <div className="text-center mb-8">
-                    <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">
-                        Interview History
-                    </h1>
-                    <p className="text-gray-400 mt-2">Review your past sessions and track your progress.</p>
+                <div className="flex flex-col md:flex-row md:items-end justify-between mb-8">
+                    <div className="text-center md:text-left flex-1">
+                        <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">
+                            Interview History
+                        </h1>
+                        <p className="text-gray-400 mt-2">Review your past sessions and track your progress.</p>
+                    </div>
+                    {history.length > 0 && (
+                        <button 
+                            onClick={exportHistoryCSV}
+                            className="mt-4 md:mt-0 flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-purple-300 rounded-lg transition-colors border border-gray-700 font-medium"
+                            title="Download Progress as CSV"
+                        >
+                            {DOWNLOAD_ICON} Export Progress
+                        </button>
+                    )}
                 </div>
                 
                 {error ? (

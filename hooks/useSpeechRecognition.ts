@@ -32,7 +32,16 @@ interface SpeechRecognition {
 const useSpeechRecognition = () => {
   const [transcript, setTranscript] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const accumulatedTranscriptRef = useRef(''); // Stores text committed before a pause/mute
+  const currentTranscriptRef = useRef(''); // Ref to track current state for toggleMute closure
+
+  // Update ref whenever state changes so helper functions have latest value
+  useEffect(() => {
+    currentTranscriptRef.current = transcript;
+  }, [transcript]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -52,10 +61,8 @@ const useSpeechRecognition = () => {
     recognition.onresult = (event) => {
       let finalTranscript = '';
       let interimTranscript = '';
-      // FIX: The original loop started from `event.resultIndex`, which caused it to miss
-      // previous final results when reconstructing the transcript. The correct approach
-      // is to iterate over the entire `event.results` list to build the full transcript
-      // on every update, as it contains all recognized parts for the current session.
+      
+      // We iterate over the results of the *current* session
       for (let i = 0; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
           finalTranscript += event.results[i][0].transcript;
@@ -63,7 +70,9 @@ const useSpeechRecognition = () => {
           interimTranscript += event.results[i][0].transcript;
         }
       }
-      setTranscript(finalTranscript + interimTranscript);
+      
+      // Combine history (from before mute/pause) with current session
+      setTranscript(accumulatedTranscriptRef.current + finalTranscript + interimTranscript);
     };
 
     recognitionRef.current = recognition;
@@ -75,9 +84,15 @@ const useSpeechRecognition = () => {
 
   const startListening = () => {
     if (recognitionRef.current) {
-      setTranscript('');
-      recognitionRef.current.start();
-      setIsListening(true);
+      // NOTE: We do NOT clear transcript here. This allows us to resume listening (unmute)
+      // without losing what was already said. Use clearTranscript() explicitly for new questions.
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+        setIsMuted(false);
+      } catch (e) {
+          console.error("Error starting recognition:", e);
+      }
     }
   };
 
@@ -88,12 +103,27 @@ const useSpeechRecognition = () => {
     }
     return transcript;
   };
+
+  const toggleMute = () => {
+      if (isMuted) {
+          // Unmute: Resume listening
+          setIsMuted(false);
+          startListening();
+      } else {
+          // Mute: Stop listening but preserve state
+          // Save what we have so far into the accumulator
+          accumulatedTranscriptRef.current = currentTranscriptRef.current;
+          stopListening();
+          setIsMuted(true);
+      }
+  };
   
   const clearTranscript = () => {
       setTranscript('');
+      accumulatedTranscriptRef.current = '';
   }
 
-  return { transcript, isListening, startListening, stopListening, clearTranscript };
+  return { transcript, isListening, isMuted, startListening, stopListening, toggleMute, clearTranscript };
 };
 
 export default useSpeechRecognition;

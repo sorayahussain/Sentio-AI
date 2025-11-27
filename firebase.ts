@@ -1,9 +1,8 @@
-// FIX: Changed from incorrect namespace import to named import for 'initializeApp'.
-import { initializeApp } from "firebase/app";
-// FIX: Changed from incorrect namespace import to named import for 'getAuth'.
-import { getAuth } from "firebase/auth";
-// FIX: Changed from namespace import to named import to resolve property 'getFirestore' not existing on the namespace.
-import { getFirestore } from "firebase/firestore";
+
+// FIX: Switched to Firebase Compat SDK to resolve "no exported member" errors in the current environment.
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDPshKZFP7neD1yzkxugfRQWVl11Z5iv5Q",
@@ -15,9 +14,11 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-// FIX: Call 'initializeApp' directly as a function.
-const app = initializeApp(firebaseConfig);
-// FIX: Call 'getAuth' directly as a function.
-export const auth = getAuth(app);
-// FIX: Use the named import of getFirestore directly.
-export const db = getFirestore(app);
+// Use compat initialization
+const app = firebase.initializeApp(firebaseConfig);
+
+// Export auth and db instances using compat API
+export const auth = app.auth();
+export const db = app.firestore();
+
+export default app;
