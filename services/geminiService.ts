@@ -27,13 +27,13 @@ const getSystemInstruction = (interviewType: InterviewType, personality: AIPerso
   let roleInstruction = "";
   switch (interviewType) {
     case 'Job':
-      roleInstruction = "You are a professional hiring manager conducting a structured 5-question interview.";
+      roleInstruction = "You are a professional hiring manager conducting a structured 5-question interview. You must stick to the interview script stages.";
       break;
     case 'School':
-      roleInstruction = "You are a university admissions officer conducting a structured 5-question interview.";
+      roleInstruction = "You are a university admissions officer conducting a structured 5-question interview. You must stick to the interview script stages.";
       break;
     case 'Casual':
-      roleInstruction = "You are a podcast host conducting a structured 5-question interview/discussion.";
+      roleInstruction = "You are a podcast host conducting a structured 5-question discussion. You must stick to the discussion script stages.";
       break;
     default:
       roleInstruction = "You are an interviewer.";
@@ -88,25 +88,25 @@ const getFallbackQuestion = () => {
 const getInterviewStage = (interviewType: InterviewType, turnCount: number): string => {
     const stages: Record<InterviewType, string[]> = {
         Job: [
-            "Introduction: Ask 'Tell me about yourself'.",
-            "Experience: Ask a specific question about their past experience relevant to the target role.",
-            "Technical/Skills: Ask a hard skill or technical question based on the job description requirements.",
-            "Behavioral: Ask a 'Tell me about a time...' (STAR method) question regarding conflict, leadership, or challenges.",
-            "Motivation/Culture: Ask why they want this specific role or company."
+            "Introduction: Ask 'Tell me about yourself' and briefly mention how your background fits this role.",
+            "Experience: Ask about a specific project or professional experience directly relevant to the target role/industry.",
+            "Technical/Skills: Identify a key skill required for this role (from description or common knowledge) and ask how they apply it.",
+            "Behavioral: Ask a behavioral question (STAR method) about a challenge, conflict, or leadership moment.",
+            "Motivation: Ask specifically why they want this role at this company vs others."
         ],
         School: [
-            "Introduction: Ask 'Tell me about yourself'.",
-            "Academic Background: Ask about their favorite subjects or academic achievements.",
-            "Extracurriculars: Ask about leadership, clubs, or activities outside of class.",
-            "Motivation: Ask specifically 'Why do you want to attend this program/university?'.",
-            "Future Goals: Ask where they see themselves in 5 years."
+            "Introduction: Ask 'Tell me about yourself' and your academic journey so far.",
+            "Academic Interest: Ask about their favorite subject or a project that inspired them to pursue this program.",
+            "Extracurriculars: Ask about a meaningful activity, club, or leadership role outside of class.",
+            "Why Us: Ask specifically what draws them to this particular university or program.",
+            "Future Goals: Ask where they see themselves in 5-10 years and how this degree helps."
         ],
         Casual: [
-            "Introduction: Ask a broad icebreaker related to the topic.",
-            "Personal Opinion: Ask for their specific opinion or stance on the topic.",
-            "Experience: Ask if they have a personal story or experience related to this.",
-            "Hypothetical: Ask a 'What if...' scenario question related to the topic.",
-            "Broad Impact: Ask about the future or broader implications of this topic."
+            "Icebreaker: Ask a broad, open-ended question to kick off the discussion topic.",
+            "Perspective: Ask for their personal opinion or stance on a specific aspect of the topic.",
+            "Experience: Ask if they have a personal story or memory related to this topic.",
+            "Hypothetical: Pose a fun or thought-provoking 'What if' scenario related to the topic.",
+            "Conclusion: Ask for a final thought or takeaway on the subject."
         ]
     };
 
@@ -115,7 +115,7 @@ const getInterviewStage = (interviewType: InterviewType, turnCount: number): str
     if (turnCount < currentStages.length) {
         return currentStages[turnCount];
     }
-    return "Wrap-up: Ask if they have any final questions or thoughts.";
+    return "Wrap-up: Thank them and ask if they have any final questions for you.";
 };
 
 export const generateQuestion = async (
@@ -156,34 +156,45 @@ export const generateQuestion = async (
     let stageInstruction = "";
     
     if (turnCount === 0) {
-        stageInstruction = `Start the interview. ${currentThemeInstruction} Keep it short (under 20 words).`;
+        stageInstruction = `Step 1 (Start): ${currentThemeInstruction} Keep it welcoming but professional.`;
     } else {
         if (isAnswerEmpty) {
              stageInstruction = `The user remained silent. Move on to the next topic: ${currentThemeInstruction}`;
         } else {
-             stageInstruction = `Acknowledge the user's previous answer briefly (1 sentence max), then PIVOT IMMEDIATELY to the next structured topic: ${currentThemeInstruction}. 
-             Use the provided ${targetLabel} and ${descLabel} to make the question specific. 
-             Do NOT just follow up on what they just said. Ensure you cover the new topic.`;
+             // Force pivot to new topic based on schema
+             stageInstruction = `Step ${turnCount + 1}: ${currentThemeInstruction}
+             CRITICAL: Do NOT ask a follow-up question to the user's previous answer details. 
+             Instead, generate a NEW question derived directly from the '${targetLabel}' and '${descLabel}' context provided above.
+             Acknowledge the previous answer in 1 short sentence, then transition immediately to this new topic.`;
         }
     }
 
     // Clarify context
     let contextSummary = "";
-    if (context) contextSummary += `${targetLabel} (User input): ${context}.\n`;
-    if (description) contextSummary += `${descLabel}: ${description.substring(0, 1000)}...\n`; 
+    if (context) contextSummary += `TARGET CONTEXT (${targetLabel}): ${context}\n`;
+    if (description) contextSummary += `DETAILED DESCRIPTION (${descLabel}): ${description.substring(0, 1500)}\n`; 
     
-    // Provide full history to ensure no repetition
+    // Provide full history to ensure no repetition, but instruct to prioritize script over history
     const recentHistory = history.slice(-5); 
 
     let promptText = `
+      You are an expert interviewer following a structured guide.
+      
+      CONTEXT INFORMATION:
       ${contextSummary}
-      ${url ? `Ref: ${url}` : ''}
+      ${url ? `Reference URL: ${url}` : ''}
       
-      History of Conversation:
-      ${recentHistory.map((turn, i) => `Turn ${i+1}:\nAI: ${turn.question}\nUser: ${turn.answer}\n(Emotions: ${formatEmotions(turn.emotionData)})`).join('\n\n')}
+      CURRENT INTERVIEW STAGE:
+      ${stageInstruction}
       
-      Task: ${stageInstruction}
-      Constraint: The question MUST be short and concise (under 40 words). Avoid long preambles. Do NOT repeat questions found in the History.
+      INSTRUCTIONS:
+      1. Generate a question that fits the CURRENT INTERVIEW STAGE.
+      2. Ensure the question is relevant to the TARGET CONTEXT and DETAILED DESCRIPTION.
+      3. Keep the question concise (max 40 words).
+      4. Do NOT repeat questions from the history.
+      
+      Conversation History:
+      ${recentHistory.map((turn, i) => `Turn ${i+1}:\nAI: ${turn.question}\nUser: ${turn.answer}`).join('\n\n')}
     `;
 
     const tools: any[] = [];
