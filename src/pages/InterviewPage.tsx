@@ -150,17 +150,21 @@ const InterviewPage: React.FC = () => {
     showReport(result);
   }, [interviewType, contextInput, descriptionInput, pdfBase64, showReport, stopListening, user]);
 
-  const askNextQuestion = useCallback(async () => {
+  const askNextQuestion = useCallback(async (currentLog: InterviewTurn[] = interviewLog) => {
     setStatus('thinking');
+    // Ensure we are using the passed log or falling back to empty if undefined (though it should be passed)
+    const logToUse = currentLog || [];
+    
     const question = await generateQuestion(
         interviewType, 
-        interviewLog, 
+        logToUse, 
         settings.personality, 
         contextInput,
         descriptionInput,
         urlInput,
         pdfBase64 || undefined
     );
+    
     setCurrentQuestion(question);
     const audioBuffer = await textToSpeech(question, settings.voice);
     setStatus('speaking');
@@ -192,11 +196,13 @@ const InterviewPage: React.FC = () => {
       emotionData: getEmotionHistory()
     };
 
+    // Calculate the updated log immediately
     const updatedLog = [...interviewLog, newTurn];
     setInterviewLog(updatedLog);
     
     if (updatedLog.length < 5) {
-        askNextQuestion();
+        // IMPORTANT: Pass the updated log directly to avoid stale state in the next async call
+        askNextQuestion(updatedLog);
     } else {
         handleEndInterview(updatedLog);
     }
@@ -204,12 +210,13 @@ const InterviewPage: React.FC = () => {
 
   const handleManualEnd = useCallback(() => {
     let finalLog = [...interviewLog];
-    if (status === 'listening') {
+    if (status === 'listening' || status === 'speaking' || status === 'thinking') {
         const answer = stopListening();
-        if (answer && answer.trim().length > 0) {
+        // Only append if we actually have a question we are answering
+        if (currentQuestion) {
             finalLog.push({
                 question: currentQuestion,
-                answer: answer,
+                answer: answer || "(Interview ended early)",
                 emotionData: getEmotionHistory()
             });
         }
@@ -263,7 +270,8 @@ const InterviewPage: React.FC = () => {
   }[interviewType];
 
   const handleStartInterview = () => {
-    if((interviewType === 'Job' || interviewType === 'School') && !contextInput.trim()) {
+    // Validate inputs for all interview types to ensure AI has context
+    if(!contextInput.trim()) {
         alert(`Please enter the ${inputConfig.contextLabel}.`);
         return;
     }
@@ -274,7 +282,8 @@ const InterviewPage: React.FC = () => {
     resumeAudioContext();
     setStatus('starting');
     setInterviewLog([]);
-    askNextQuestion();
+    // Start with an empty log explicitly
+    askNextQuestion([]);
   };
 
   const formatTime = (seconds: number) => {
@@ -334,10 +343,41 @@ const InterviewPage: React.FC = () => {
                                 <div className={`w-2 h-2 rounded-full ${status === 'listening' && !isMuted ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
                                 {status === 'listening' ? (isMuted ? 'MUTED' : 'LISTENING') : 'CAMERA ACTIVE'}
                             </div>
-                             {/* Timer if active */}
+                             {/* Circular Timer if active */}
                             {status !== 'idle' && status !== 'ending' && (
-                                <div className="absolute top-4 right-4 px-3 py-1 bg-black/50 backdrop-blur-md rounded-full text-sm font-mono font-bold border border-purple-500/30 text-purple-300">
-                                    {formatTime(timeRemaining)}
+                                <div className="absolute top-4 right-4 w-16 h-16">
+                                     {/* Background/Backdrop for readability */}
+                                     <div className="absolute inset-0 bg-black/40 backdrop-blur-sm rounded-full"></div>
+                                     
+                                     <svg className="relative w-full h-full transform -rotate-90 drop-shadow-xl" viewBox="0 0 100 100">
+                                        {/* Track */}
+                                        <circle
+                                            cx="50"
+                                            cy="50"
+                                            r="40"
+                                            fill="transparent"
+                                            stroke="rgba(255,255,255,0.1)"
+                                            strokeWidth="6"
+                                        />
+                                        {/* Progress */}
+                                        <circle
+                                            cx="50"
+                                            cy="50"
+                                            r="40"
+                                            fill="transparent"
+                                            stroke="#A855F7" // Purple-500
+                                            strokeWidth="6"
+                                            strokeDasharray={2 * Math.PI * 40}
+                                            strokeDashoffset={(2 * Math.PI * 40) * (1 - timeRemaining / 300)}
+                                            strokeLinecap="round"
+                                            className="transition-all duration-1000 ease-linear"
+                                        />
+                                    </svg>
+                                    <div className="absolute inset-0 flex items-center justify-center z-10">
+                                        <span className="text-sm font-mono font-bold text-white drop-shadow-md">
+                                            {formatTime(timeRemaining)}
+                                        </span>
+                                    </div>
                                 </div>
                             )}
                          </>
@@ -479,13 +519,21 @@ const InterviewPage: React.FC = () => {
                     ) : (
                         // ACTIVE INTERVIEW STATE
                         <div className="flex flex-col items-center h-full justify-center w-full">
-                             {/* Status Text or Question */}
-                             <div className="min-h-[120px] flex items-center justify-center w-full my-8">
+                             {/* Question and Status Display */}
+                             <div className="min-h-[120px] flex flex-col items-center justify-center w-full my-8 gap-4">
+                                
                                 {status === 'starting' && <Loader text="Preparing your session..." />}
                                 {status === 'thinking' && <p className="text-xl text-purple-300 animate-pulse">AI is thinking...</p>}
-                                {status === 'speaking' && <h3 className="text-2xl font-medium text-white leading-relaxed">"{currentQuestion}"</h3>}
+                                
+                                {/* Always show current question if available and not in loading states */}
+                                {currentQuestion && status !== 'starting' && status !== 'ending' && (
+                                    <h3 className={`text-2xl font-medium text-white leading-relaxed transition-opacity duration-500 ${status === 'thinking' ? 'opacity-50' : 'opacity-100'}`}>
+                                        "{currentQuestion}"
+                                    </h3>
+                                )}
+
                                 {status === 'listening' && (
-                                     <div className="flex flex-col items-center gap-4 w-full">
+                                     <div className="flex flex-col items-center gap-4 w-full mt-4">
                                          <div className="relative">
                                              <div className={`p-4 rounded-full ${isMuted ? 'bg-gray-700' : 'bg-red-500/20 animate-pulse'}`}>
                                                  <div className={`w-8 h-8 ${isMuted ? 'text-gray-400' : 'text-red-400'}`}>
@@ -497,7 +545,7 @@ const InterviewPage: React.FC = () => {
                                          <p className="text-xl text-gray-300">{isMuted ? "Microphone Muted" : "Listening..."}</p>
                                          
                                          <p className="text-lg text-gray-400 min-h-[56px] w-full p-2 bg-gray-900/50 rounded-md border border-gray-700 text-left whitespace-pre-wrap">
-                                            {transcript || <span className="text-gray-600">...</span>}
+                                            {transcript || <span className="text-gray-600 italic">Say something...</span>}
                                         </p>
                                      </div>
                                 )}
@@ -506,7 +554,7 @@ const InterviewPage: React.FC = () => {
 
                              {/* Controls */}
                              {status === 'listening' && (
-                                 <div className="flex gap-3 w-full max-w-md items-center">
+                                 <div className="flex gap-3 w-full max-w-md items-center mt-4">
                                      <button
                                         onClick={toggleMute}
                                         className={`p-3 rounded-lg font-bold border-2 transition-colors ${
