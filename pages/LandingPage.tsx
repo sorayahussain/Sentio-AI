@@ -55,16 +55,6 @@ const LandingPage: React.FC = () => {
             />
           </div>
         </section>
-        
-        <section id="future-features" className="mt-24 max-w-3xl mx-auto text-left">
-            <h2 className="text-3xl font-bold mb-6 text-center">Future Enhancements</h2>
-            <ul className="list-disc list-inside space-y-2 text-gray-300 bg-gray-800 bg-opacity-50 p-6 rounded-xl">
-                <li><span className="font-semibold">Custom Interview Scripts:</span> Upload a job description to generate a hyper-specific mock interview.</li>
-                <li><span className="font-semibold">Voice Tonality Analysis:</span> Deeper analysis of vocal tone to detect sarcasm, enthusiasm, and stress levels.</li>
-                <li><span className="font-semibold">Peer Review Mode:</span> Share your recorded interview with mentors or friends for human feedback.</li>
-                <li><span className="font-semibold">Historical Progress Tracking:</span> Visualize your improvement over time with detailed charts and graphs.</li>
-            </ul>
-        </section>
 
       </main>
     </div>

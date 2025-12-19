@@ -1,93 +1,104 @@
-# Sentio AI Interview Coach
+# 🎙️ Sentio AI Interview Coach
 
-Sentio is an intelligent, AI-powered interview preparation platform that helps users practice and improve their interview skills through realistic simulations and comprehensive multi-modal feedback.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Gemini](https://img.shields.io/badge/Model-Gemini%203%20Pro-blueviolet)](https://ai.google.dev/)
+[![React](https://img.shields.io/badge/Frontend-React%2019-blue)](https://react.dev/)
+[![Firebase](https://img.shields.io/badge/Backend-Firebase-orange)](https://firebase.google.com/)
 
-![Sentio AI Screenshot](https://storage.googleapis.com/aistudio-ux-team-public/sdk_gallery/demos/sentio.png)
+**Sentio** is an intelligent, high-fidelity interview preparation platform. It leverages the cutting-edge reasoning capabilities of **Google Gemini 3 Pro** and real-time biometric analysis via **face-api.js** to transform your webcam into a world-class career coach.
 
-## ✨ Features
+---
 
-- **Realistic AI Simulations:** Engage in dynamic conversations with an AI interviewer powered by the Google Gemini API.
-- **Multiple Scenarios:** Practice for different contexts, including professional job interviews, school admissions, and casual conversations.
-- **Multi-Modal Feedback:** Receive a detailed performance report analyzing not just what you say, but how you say it.
-- **Real-time Emotion Analysis:** Using your webcam, Sentio analyzes your facial expressions to provide feedback on confidence and engagement.
-- **Speech-to-Text:** Your answers are transcribed in real-time.
-- **Text-to-Speech:** The AI interviewer's questions are spoken aloud for a more immersive experience.
-- **Comprehensive Reports:** Get scores on clarity, confidence, engagement, and answer quality, along with AI-generated strengths and areas for improvement.
-- **Interview History:** Track your progress over time by reviewing past interview reports.
-- **Secure Authentication:** User accounts and data are managed securely with Firebase Authentication and Firestore.
+## ✨ Why Sentio?
+
+Unlike static question banks, Sentio provides a dynamic, immersive simulation that analyzes not just *what* you say, but *how* you say it.
+
+-   **🧠 Adaptive Reasoning:** Powered by Gemini 3 Pro, the interviewer dynamically adjusts its questioning based on your specific background and previous answers.
+-   **🎭 Emotional Intelligence:** Real-time facial expression tracking detects confidence, stress, and engagement levels.
+-   **🗣️ Natural Interaction:** Low-latency Text-to-Speech (TTS) via Gemini 2.5 Flash creates a conversational flow that feels human.
+-   **📊 The STAR Evaluation:** Receive a granular performance report scoring your clarity, confidence, and adherence to the Situation-Task-Action-Result (STAR) framework.
+
+---
 
 ## 🛠️ Tech Stack
 
-- **Frontend:** React, TypeScript, Tailwind CSS
-- **AI & ML:** Google Gemini API (for conversational AI and TTS), face-api.js (for facial expression analysis)
-- **Backend & Database:** Firebase (Authentication, Firestore)
-- **UI Components:** Recharts (for data visualization)
+-   **LLM Core:** `@google/genai` (Gemini 3 Pro for logic, Gemini 2.5 Flash for TTS).
+-   **Computer Vision:** `face-api.js` (TinyFaceDetector, FaceExpressionNet).
+-   **Frontend:** React 19, TypeScript, Tailwind CSS, Recharts.
+-   **Backend-as-a-Service:** Firebase Auth (Identity), Firestore (Persistence).
+-   **Reporting:** jsPDF & html2canvas for high-resolution report exports.
+
+---
+
+## 🏗️ Architecture: The 5-Turn Blueprint
+
+Sentio doesn't just ask random questions. Every session follows a sophisticated **5-Turn Blueprint** designed to mimic real-world interview progression:
+
+1.  **The Opening:** High-level interest and alignment check.
+2.  **Competency Deep-Dive:** Technical or academic skill validation (extracted from your PDF/Link).
+3.  **Behavioral STAR:** Probing your soft skills through situational challenges.
+4.  **Vision & Growth:** Testing your long-term roadmap and adaptability.
+5.  **Synthesis/Curveball:** A unique closing question that tests critical thinking under pressure.
+
+---
 
 ## 🚀 Getting Started
 
-Follow these instructions to get a copy of the project up and running on your local machine for development and testing purposes.
+### 1. Prerequisites
+- A **Google Gemini API Key** from [Google AI Studio](https://aistudio.google.com/).
+- A **Firebase Project** for user authentication and history storage.
 
-### Prerequisites
+### 2. Environment Configuration
+The application expects your Gemini API key in the environment.
+```bash
+# In your local environment or .env file
+API_KEY=your_gemini_api_key_here
+```
 
-- [Node.js](https://nodejs.org/) (v18 or later recommended)
-- [npm](https://www.npmjs.com/) or [yarn](https://yarnpkg.com/)
-- A [Google Cloud project](https://cloud.google.com/resource-manager/docs/creating-managing-projects) with the Gemini API enabled.
-- A [Firebase project](https://firebase.google.com/docs/web/setup).
+### 3. Firebase Setup
+Paste your `firebaseConfig` into `src/firebase.ts`. Then, configure your **Firestore Security Rules** to ensure data privacy:
 
-### Installation & Setup
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/{documents=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
+```
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/sentio-ai-coach.git
-    cd sentio-ai-coach
-    ```
+### 4. Installation
+```bash
+npm install
+npm run dev
+```
 
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
+---
 
-3.  **Set up Firebase:**
-    *   Go to your [Firebase Console](https://console.firebase.google.com/), create a new project.
-    *   Add a new Web App to your project.
-    *   Copy the `firebaseConfig` object from the setup screen.
-    *   Paste your configuration into `firebase.ts`, replacing the placeholder config.
-    *   In the Firebase console, go to **Authentication** -> **Sign-in method** and enable the **Email/Password** provider.
-    *   Go to **Firestore Database**, create a database in production mode, and then navigate to the **Rules** tab.
-    *   Replace the default rules with the following to allow users to access their own data:
-        ```
-        rules_version = '2';
-        service cloud.firestore {
-          match /databases/{database}/documents {
-            match /users/{userId}/{documents=**} {
-              allow read, write: if request.auth != null && request.auth.uid == userId;
-            }
-          }
-        }
-        ```
+## 🛡️ Safety & Privacy
 
-4.  **Set up Google Gemini API Key:**
-    *   Go to [Google AI Studio](https://aistudio.google.com/) and create an API key.
-    *   The application is configured to read the API key from `process.env.API_KEY`. You will need to set up your environment to provide this key. For local development, you can create a `.env.local` file in the root of the project:
-        ```
-        API_KEY=YOUR_GEMINI_API_KEY
-        ```
-    *   *Note: Ensure your development environment (e.g., Vite, Create React App) is configured to load environment variables.*
+-   **Data Sovereignty:** Your interview recordings and transcripts are stored exclusively in your own Firebase project.
+-   **AI Safety:** We implement `BLOCK_ONLY_HIGH` safety thresholds via the Gemini API to ensure a professional environment while allowing for rigorous, high-stakes questioning.
+-   **On-Device Analysis:** Facial expression analysis is performed locally in your browser using `face-api.js`. No raw video data is ever sent to external servers.
 
-5.  **Run the application:**
-    ```bash
-    npm run dev
-    ```
-    Open your browser and navigate to the local server address provided (usually `http://localhost:5173`).
+---
 
-## 🔮 Future Enhancements
+## 🔮 Future Roadmap
 
--   **Custom Interview Scripts:** Upload a job description to generate a hyper-specific mock interview.
--   **Voice Tonality Analysis:** Deeper analysis of vocal tone to detect sarcasm, enthusiasm, and stress levels.
--   **Peer Review Mode:** Share your recorded interview with mentors or friends for human feedback.
--   **Multi-language Support:** Practice interviews in different languages.
--   **Historical Progress Tracking:** Visualize your improvement over time with detailed charts and graphs.
+-   **Custom Personality Profiles:** Practice against "The Skeptic," "The Encourager," or "The Executive."
+-   **Vocal Tonality Analysis:** Integration of Gemini's native audio modalities for sarcasm and stress detection in voice.
+-   **Peer Comparison:** Anonymized benchmarking against industry standards for specific roles.
+
+---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the `LICENSE.md` file for details.
+Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+<p align="center">
+  Built with ❤️ by the Sentio Team.
+</p>
