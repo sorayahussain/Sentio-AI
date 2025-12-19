@@ -101,4 +101,5 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 <p align="center">
   Built with ❤️ by the Sentio Team.
+  - Soraya, Qistina, Uzma and Namirah
 </p>
