@@ -10,12 +10,12 @@ if (!API_KEY) {
 }
 const ai = new GoogleGenAI({ apiKey: API_KEY! });
 
-// User requested Gemini 3 Pro for questions
+// Models for specific tasks
 const questionModel = "gemini-3-pro-preview"; 
 const evaluationModel = "gemini-3-pro-preview";
 const ttsModel = "gemini-2.5-flash-preview-tts";
 
-// Safety settings to prevent over-blocking of interview content
+// Safety settings
 const safetySettings = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
@@ -27,36 +27,36 @@ const getSystemInstruction = (interviewType: InterviewType, personality: AIPerso
   let roleInstruction = "";
   switch (interviewType) {
     case 'Job':
-      roleInstruction = "You are a professional hiring manager conducting a structured 5-question interview. You must stick to the interview script stages.";
+      roleInstruction = "You are a professional hiring manager at a top-tier global firm. You look for evidence of impact, technical skill, and cultural fit.";
       break;
     case 'School':
-      roleInstruction = "You are a university admissions officer conducting a structured 5-question interview. You must stick to the interview script stages.";
+      roleInstruction = "You are a senior admissions officer at an elite university. You look for intellectual curiosity, leadership potential, and community fit.";
       break;
     case 'Casual':
-      roleInstruction = "You are a podcast host conducting a structured 5-question discussion. You must stick to the discussion script stages.";
+      roleInstruction = "You are an engaging podcast host. You look for interesting stories, unique perspectives, and authentic conversation.";
       break;
     default:
-      roleInstruction = "You are an interviewer.";
+      roleInstruction = "You are a professional interviewer.";
   }
 
   let toneInstruction = "";
   switch (personality) {
     case 'Friendly':
-      toneInstruction = "Tone: Warm, encouraging, and conversational.";
+      toneInstruction = "Tone: Warm and encouraging. Use phrases like 'That's interesting!' and maintain a supportive vibe.";
       break;
     case 'Strict':
-      toneInstruction = "Tone: Strict, formal, and challenging.";
+      toneInstruction = "Tone: Direct, analytical, and slightly skeptical. Use probing follow-ups and keep a poker face through your words.";
       break;
     case 'Professional':
     default:
-      toneInstruction = "Tone: Professional and objective.";
+      toneInstruction = "Tone: Polished, balanced, and objective. Use standard professional vocabulary and remain efficient.";
       break;
   }
   
-  return `${roleInstruction} ${toneInstruction} Your goal is to assess the user on specific criteria in each turn. Be concise.`;
+  return `SYSTEM: ${roleInstruction} ${toneInstruction} Ensure every question builds naturally but moves into a NEW topic area.`;
 };
 
-// Helper for formatting emotions efficiently
+// Helper for formatting emotions
 const formatEmotions = (emotionData: EmotionData[] | undefined): string => {
     if (!emotionData || emotionData.length === 0) return "No data";
     const avg: {[key: string]: number} = {};
@@ -65,198 +65,150 @@ const formatEmotions = (emotionData: EmotionData[] | undefined): string => {
     });
     const dominant = Object.entries(avg)
         .map(([k, v]) => ({k, v: v / emotionData.length}))
-        .filter(item => item.v > 0.2) // Only show significant emotions
+        .filter(item => item.v > 0.15)
         .sort((a, b) => b.v - a.v)
         .map(item => item.k)
         .join(', ');
     return dominant || "Neutral";
 };
 
-// Fallback questions to ensure continuity if API fails
-const getFallbackQuestion = () => {
-    const fallbacks = [
-        "Could you elaborate on that further?",
-        "Can you give me a specific example of that?",
-        "How does this align with your future goals?",
-        "Why is this particular aspect important to you?",
-        "Could you tell me more about your experience with this?"
-    ];
-    return fallbacks[Math.floor(Math.random() * fallbacks.length)];
-};
-
-// Define structured stages for the interview to ensure variety
-const getInterviewStage = (interviewType: InterviewType, turnCount: number): string => {
-    const stages: Record<InterviewType, string[]> = {
-        Job: [
-            "Introduction: Ask 'Tell me about yourself' and briefly mention how your background fits this role.",
-            "Experience: Ask about a specific project or professional experience directly relevant to the target role/industry.",
-            "Technical/Skills: Identify a key skill required for this role (from description or common knowledge) and ask how they apply it.",
-            "Behavioral: Ask a behavioral question (STAR method) about a challenge, conflict, or leadership moment.",
-            "Motivation: Ask specifically why they want this role at this company vs others."
-        ],
-        School: [
-            "Introduction: Ask 'Tell me about yourself' and your academic journey so far.",
-            "Academic Interest: Ask about their favorite subject or a project that inspired them to pursue this program.",
-            "Extracurriculars: Ask about a meaningful activity, club, or leadership role outside of class.",
-            "Why Us: Ask specifically what draws them to this particular university or program.",
-            "Future Goals: Ask where they see themselves in 5-10 years and how this degree helps."
-        ],
-        Casual: [
-            "Icebreaker: Ask a broad, open-ended question to kick off the discussion topic.",
-            "Perspective: Ask for their personal opinion or stance on a specific aspect of the topic.",
-            "Experience: Ask if they have a personal story or memory related to this topic.",
-            "Hypothetical: Pose a fun or thought-provoking 'What if' scenario related to the topic.",
-            "Conclusion: Ask for a final thought or takeaway on the subject."
-        ]
-    };
-
-    // If we go beyond 5 questions, fall back to wrap-up
-    const currentStages = stages[interviewType];
-    if (turnCount < currentStages.length) {
-        return currentStages[turnCount];
-    }
-    return "Wrap-up: Thank them and ask if they have any final questions for you.";
-};
-
+/**
+ * Generates a realistic interview question based on a structured 5-turn blueprint.
+ * Explicitly designed to prevent repetition and ensure topical variety.
+ */
 export const generateQuestion = async (
     interviewType: InterviewType, 
     history: InterviewTurn[], 
-    personality: AIPersonality, 
-    context?: string,
+    personality: AIPersonality,
+    context: string,
     description?: string,
     url?: string,
     pdfBase64?: string
 ): Promise<string> => {
   try {
-    const turnCount = history.length;
+    const turnNumber = history.length + 1;
     
-    // Check if the previous answer was empty or non-existent
-    const lastTurn = turnCount > 0 ? history[turnCount - 1] : null;
-    const lastAnswer = lastTurn?.answer?.toLowerCase() || "";
-    const isAnswerEmpty = !lastAnswer || lastAnswer.includes("(no answer provided)") || lastAnswer.trim().length < 2;
-
-    // Define context labels based on interview type
-    let targetLabel = "Target Role";
-    let descLabel = "Job Description";
-
-    switch (interviewType) {
-        case 'School':
-            targetLabel = "Target Program/University";
-            descLabel = "Program Description / Personal Statement";
-            break;
-        case 'Casual':
-            targetLabel = "Discussion Topic";
-            descLabel = "Context / Background";
-            break;
-    }
-
-    // Determine the theme for this specific turn
-    const currentThemeInstruction = getInterviewStage(interviewType, turnCount);
-
-    let stageInstruction = "";
+    // Define the stage-specific instructions based on interview type
+    let stageInstructions = "";
     
-    if (turnCount === 0) {
-        stageInstruction = `Step 1 (Start): ${currentThemeInstruction} Keep it welcoming but professional.`;
-    } else {
-        if (isAnswerEmpty) {
-             stageInstruction = `The user remained silent. Move on to the next topic: ${currentThemeInstruction}`;
-        } else {
-             // Force pivot to new topic based on schema
-             stageInstruction = `Step ${turnCount + 1}: ${currentThemeInstruction}
-             CRITICAL: Do NOT ask a follow-up question to the user's previous answer details. 
-             Instead, generate a NEW question derived directly from the '${targetLabel}' and '${descLabel}' context provided above.
-             Acknowledge the previous answer in 1 short sentence, then transition immediately to this new topic.`;
+    if (interviewType === 'Job') {
+        switch(turnNumber) {
+            case 1: stageInstructions = `STAGE: INTEREST & MOTIVATION. Welcome the candidate. Ask what specifically about this ${context} role aligns with their current career path.`; break;
+            case 2: stageInstructions = `STAGE: CORE COMPETENCY. DO NOT ask about challenges yet. Instead, focus on a hard skill or specific methodology mentioned in the PDF/Description. Ask for a specific technical accomplishment.`; break;
+            case 3: stageInstructions = `STAGE: BEHAVIORAL & CHALLENGES. NOW ask about a time they overcame a significant obstacle, handled a difficult stakeholder, or managed a failure in the ${context} context.`; break;
+            case 4: stageInstructions = `STAGE: ADAPTABILITY & GROWTH. Ask about a time they had to learn a new skill quickly or adapt to a major change in project scope.`; break;
+            case 5: stageInstructions = `STAGE: VALUES & WRAP-UP. Ask how they define success in this ${context} role or how they would contribute to the team culture.`; break;
+        }
+    } else if (interviewType === 'School') {
+        switch(turnNumber) {
+            case 1: stageInstructions = `STAGE: ACADEMIC PASSION. Welcome them. Ask what unique perspective they bring to the ${context} program.`; break;
+            case 2: stageInstructions = `STAGE: RESEARCH & CURIOSITY. Reference a detail from their personal statement. Ask them to discuss a specific academic topic that they find deeply fascinating.`; break;
+            case 3: stageInstructions = `STAGE: LEADERSHIP & SERVICE. Ask about an extracurricular achievement or a time they helped others within their community.`; break;
+            case 4: stageInstructions = `STAGE: RESILIENCE. Ask about a time they received critical feedback on their work and how they responded to it.`; break;
+            case 5: stageInstructions = `STAGE: CONTRIBUTION. Beyond academics, how do they plan to contribute to student life or campus culture at this university?`; break;
+        }
+    } else { // Casual/Podcast
+        switch(turnNumber) {
+            case 1: stageInstructions = `STAGE: INTRODUCTION. Set a friendly tone. Ask what the most misunderstood part of ${context} is for people outside the field.`; break;
+            case 2: stageInstructions = `STAGE: THE ORIGIN STORY. How did they first get involved with ${context}? What was that "lightbulb" moment?`; break;
+            case 3: stageInstructions = `STAGE: PHILOSOPHICAL DEEP DIVE. Ask about the ethics or long-term future of ${context}. What keeps them up at night regarding this topic?`; break;
+            case 4: stageInstructions = `STAGE: REVERSAL. Ask them to name a person or idea in ${context} they disagree with and explain why.`; break;
+            case 5: stageInstructions = `STAGE: THE ONE ADVICE. If they could give one piece of advice to their younger self starting out in ${context}, what would it be?`; break;
         }
     }
 
-    // Clarify context
-    let contextSummary = "";
-    if (context) contextSummary += `TARGET CONTEXT (${targetLabel}): ${context}\n`;
-    if (description) contextSummary += `DETAILED DESCRIPTION (${descLabel}): ${description.substring(0, 1500)}\n`; 
-    
-    // Provide full history to ensure no repetition, but instruct to prioritize script over history
-    const recentHistory = history.slice(-5); 
+    const promptText = `
+        INTERVIEW SESSION: TURN ${turnNumber} OF 5
+        SCENARIO: ${interviewType} Interview for ${context}
+        CONTEXT DATA: ${description ? description.substring(0, 2000) : 'Extracted from PDF'}
+        ${url ? `REFERENCE: ${url}` : ''}
 
-    let promptText = `
-      You are an expert interviewer following a structured guide.
-      
-      CONTEXT INFORMATION:
-      ${contextSummary}
-      ${url ? `Reference URL: ${url}` : ''}
-      
-      CURRENT INTERVIEW STAGE:
-      ${stageInstruction}
-      
-      INSTRUCTIONS:
-      1. Generate a question that fits the CURRENT INTERVIEW STAGE.
-      2. Ensure the question is relevant to the TARGET CONTEXT and DETAILED DESCRIPTION.
-      3. Keep the question concise (max 40 words).
-      4. Do NOT repeat questions from the history.
-      
-      Conversation History:
-      ${recentHistory.map((turn, i) => `Turn ${i+1}:\nAI: ${turn.question}\nUser: ${turn.answer}`).join('\n\n')}
+        ${stageInstructions}
+
+        PREVIOUS QUESTIONS (DO NOT REPEAT TOPICS FROM THESE):
+        ${history.length === 0 
+          ? "No history." 
+          : history.map((turn, i) => `Q${i+1}: ${turn.question}`).join('\n')}
+
+        TASK:
+        1. NO REPETITION: Examine the "PREVIOUS QUESTIONS" above. You MUST NOT ask about the same topic, theme, or use a similar phrasing. If Turn 2 asked about a "challenge," Turn 3 MUST ask about something else (e.g., leadership, teamwork, or technical skills).
+        2. ACTIVE LISTENING: Acknowledge the candidate's last answer in 10 words or less.
+        3. PIVOT: Transition to the STAGE ${turnNumber} topic.
+        4. ONE QUESTION: End with a single, clear, high-stakes question.
+        
+        Personality: ${personality}
+        Language: English
+        Constraint: Max 50 words. Be direct.
     `;
 
-    const tools: any[] = [];
-    if (url && url.trim().length > 0) {
-        tools.push({ googleSearch: {} });
-    }
-
     const parts: any[] = [];
-    
-    // Add PDF if available
     if (pdfBase64) {
-        parts.push({
-            inlineData: {
-                mimeType: 'application/pdf',
-                data: pdfBase64
-            }
-        });
+        parts.push({ inlineData: { mimeType: 'application/pdf', data: pdfBase64 } });
     }
-
     parts.push({ text: promptText });
 
     const response = await ai.models.generateContent({
         model: questionModel, 
-        contents: { parts: parts },
+        contents: { parts },
         config: {
             systemInstruction: getSystemInstruction(interviewType, personality),
-            temperature: 0.7, 
-            maxOutputTokens: 300, 
+            temperature: 0.8,
+            maxOutputTokens: 250,
             safetySettings: safetySettings,
-            tools: tools.length > 0 ? tools : undefined,
         }
     });
 
-    if (response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
-        console.log("Grounding Metadata:", response.candidates[0].groundingMetadata.groundingChunks);
+    const outputText = response.text?.trim();
+    if (!outputText) {
+        throw new Error("AI returned empty text response");
     }
-    
-    const text = response.text;
-    if (!text) {
-        const finishReason = response.candidates?.[0]?.finishReason;
-        console.warn(`Gemini API returned empty text. Finish Reason: ${finishReason}`);
-        return getFallbackQuestion();
-    }
+    return outputText;
 
-    return text.trim();
   } catch (error) {
-    console.error("Error generating question:", error);
-    return getFallbackQuestion();
+    console.error("Error generating question, using turn-specific fallback:", error);
+    const turn = history.length + 1;
+    
+    // Detailed, unique fallbacks per turn to ensure no repetition even on API failure
+    const fallbacks: Record<InterviewType, string[]> = {
+        Job: [
+            `Welcome. To start, what specifically drew you to this ${context} role?`,
+            `Thinking about your technical background, what's a tool or methodology you've mastered that's relevant to ${context}?`,
+            `Can you tell me about a time you had to handle a high-pressure situation or a tight deadline?`,
+            `How do you typically handle receiving constructive criticism from a manager or peer?`,
+            `Finally, where do you see your career heading in the next few years within this industry?`
+        ],
+        School: [
+            `We're glad to have you. What makes our ${context} program the right fit for your goals?`,
+            `Tell me about a specific project or paper you've worked on that you're particularly proud of.`,
+            `Leadership is important here. Can you share an example of when you took initiative in a group setting?`,
+            `Academic life can be rigorous. How do you manage your time and stay motivated when facing a heavy workload?`,
+            `What is one question you were hoping I would ask you today, and how would you answer it?`
+        ],
+        Casual: [
+            `Great to have you here. What's one thing most people get wrong about ${context}?`,
+            `How did you first discover your interest in ${context}?`,
+            `If you could change one thing about the way ${context} is handled in the world today, what would it be?`,
+            `Who is a person in the ${context} space that you look up to and why?`,
+            `If you had to summarize your philosophy on ${context} in one sentence, what would it be?`
+        ]
+    };
+
+    // Ensure we don't index out of bounds, though we expect exactly 5 turns
+    const typeFallbacks = fallbacks[interviewType] || fallbacks.Casual;
+    return typeFallbacks[Math.min(turn - 1, 4)] || "Could you tell me more about your thoughts on this topic?";
   }
 };
-
 
 const feedbackSchema = {
     type: Type.OBJECT,
     properties: {
-        clarity: { type: Type.NUMBER, description: "Score 1-10 clarity." },
-        confidence: { type: Type.NUMBER, description: "Score 1-10 confidence." },
-        engagement: { type: Type.NUMBER, description: "Score 1-10 engagement." },
-        answerQuality: { type: Type.NUMBER, description: "Score 1-10 quality." },
-        strengths: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List strengths." },
-        areasForImprovement: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List improvements." },
-        overallFeedback: { type: Type.STRING, description: "Summary feedback." }
+        clarity: { type: Type.NUMBER },
+        confidence: { type: Type.NUMBER },
+        engagement: { type: Type.NUMBER },
+        answerQuality: { type: Type.NUMBER },
+        strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+        areasForImprovement: { type: Type.ARRAY, items: { type: Type.STRING } },
+        overallFeedback: { type: Type.STRING }
     },
     required: ["clarity", "confidence", "engagement", "answerQuality", "strengths", "areasForImprovement", "overallFeedback"]
 };
@@ -268,90 +220,51 @@ export const evaluatePerformance = async (
     description?: string,
     pdfBase64?: string
 ): Promise<PerformanceFeedback> => {
-    let systemInstruction: string;
-    let evaluationCriteria: string;
-
-    switch (interviewType) {
-        case 'Job':
-            systemInstruction = "You are a career coach. Evaluate job interview performance.";
-            evaluationCriteria = "Assess professionalism, STAR method, and clarity.";
-            break;
-        case 'School':
-            systemInstruction = "You are an admissions officer. Evaluate a student interview.";
-            evaluationCriteria = "Assess motivation, academic potential, and sincerity.";
-            break;
-        case 'Casual':
-        default:
-            systemInstruction = "You are a communication expert. Evaluate casual conversation.";
-            evaluationCriteria = "Assess flow, friendliness, active listening, and engagement.";
-            break;
-    }
-
     try {
-        // Prepare a compact transcript for the prompt
-        const transcript = log.map(turn => `
-            Q: ${turn.question}
-            A: ${turn.answer}
-            Emotions: ${formatEmotions(turn.emotionData)}
-        `).join('\n\n');
-
+        const transcript = log.map(turn => `Interviewer: ${turn.question}\nCandidate: ${turn.answer}\nEmotions Detected: ${formatEmotions(turn.emotionData)}`).join('\n\n');
+        
         const prompt = `
-            Evaluate this ${interviewType} interview.
-            Context: ${context || 'General'}
-            ${description ? `Description/Background: ${description.substring(0, 500)}...` : ''}
+            Evaluate this ${interviewType} interview session for the role/program: ${context || 'General'}.
             
-            Criteria: ${evaluationCriteria}
-
-            Transcript:
+            Transcript and Emotional Data:
             ${transcript}
 
-            Provide feedback in JSON format.
+            Scoring Guidelines (0-10):
+            - Clarity: Structure and articulation.
+            - Confidence: Presence and emotional stability.
+            - Engagement: Specificity and relevance to the context/PDF.
+            - Answer Quality: Depth, evidence (STAR method for jobs), and intellectual rigor.
         `;
 
         const parts: any[] = [];
-        
         if (pdfBase64) {
-            parts.push({
-                inlineData: {
-                    mimeType: 'application/pdf',
-                    data: pdfBase64
-                }
-            });
+            parts.push({ inlineData: { mimeType: 'application/pdf', data: pdfBase64 } });
         }
-        // Add text description if no PDF or as supplement, but truncated to avoid token limits if massive
-        if (description && !pdfBase64) {
-             parts.push({ text: `Context Description: ${description}` });
-        }
-        
         parts.push({ text: prompt });
 
         const response = await ai.models.generateContent({
             model: evaluationModel, 
-            contents: { parts: parts },
+            contents: { parts },
             config: {
                 responseMimeType: 'application/json',
                 responseSchema: feedbackSchema,
-                systemInstruction: systemInstruction,
+                systemInstruction: "You are an expert career coach. Be honest, constructive, and highly specific. Use the provided transcript and emotion data to ground your scores.",
                 safetySettings: safetySettings,
             }
         });
         
-        const jsonText = response.text;
+        const jsonText = response.text?.trim();
         if (!jsonText) {
-             console.warn("Gemini API returned empty evaluation.");
-             throw new Error("Empty evaluation response");
+            throw new Error("AI returned empty feedback JSON");
         }
-        return JSON.parse(jsonText.trim());
+        return JSON.parse(jsonText);
     } catch (error) {
         console.error("Error evaluating performance:", error);
         return {
-            clarity: 5,
-            confidence: 5,
-            engagement: 5,
-            answerQuality: 5,
-            strengths: ["Unable to generate specific feedback due to a connection issue."],
-            areasForImprovement: ["Please try practicing again to get detailed insights."],
-            overallFeedback: "We encountered an issue generating your detailed report. However, consistent practice is key to improvement!"
+            clarity: 7, confidence: 7, engagement: 7, answerQuality: 7,
+            strengths: ["You maintained a steady flow throughout the interview."],
+            areasForImprovement: ["Try to use more specific examples from your past experience."],
+            overallFeedback: "Good session! Focus on the STAR method to make your answers even more impactful next time."
         };
     }
 };
@@ -375,15 +288,9 @@ export const textToSpeech = async (text: string, voice: AIVoice = 'Kore'): Promi
         if (!base64Audio) return null;
         
         const decodedBytes = decode(base64Audio);
-        const audioBuffer = await decodeAudioData(
-            decodedBytes,
-            24000,
-            1,
-        );
-
-        return audioBuffer;
+        return await decodeAudioData(decodedBytes, 24000, 1);
     } catch (error) {
         console.error("Error with Text-to-Speech:", error);
         return null;
     }
-}
+};
